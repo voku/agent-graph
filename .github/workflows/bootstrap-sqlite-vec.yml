@@ -1,0 +1,77 @@
+name: Bootstrap sqlite-vec binaries
+
+on:
+  push:
+    branches:
+      - feat/sqlite-vec-runtime
+    paths:
+      - .github/workflows/bootstrap-sqlite-vec.yml
+
+permissions:
+  contents: write
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and verify pinned sqlite-vec binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version='0.1.7-alpha.2'
+          base="https://github.com/asg017/sqlite-vec/releases/download/v${version}"
+
+          fetch_binary() {
+            local asset="$1"
+            local destination="$2"
+            local expected_sha256="$3"
+            local temporary
+            local unpacked
+            local binary
+
+            temporary="$(mktemp)"
+            unpacked="$(mktemp -d)"
+
+            curl --fail --location --silent --show-error \
+              "${base}/${asset}" \
+              --output "${temporary}"
+            tar -xzf "${temporary}" -C "${unpacked}"
+
+            binary="$(find "${unpacked}" -type f -name 'vec0.so' -print -quit)"
+            test -n "${binary}"
+
+            mkdir -p "$(dirname "${destination}")"
+            install -m 0644 "${binary}" "${destination}"
+            printf '%s  %s\n' "${expected_sha256}" "${destination}" | sha256sum --check --strict
+
+            rm -f "${temporary}"
+            rm -rf "${unpacked}"
+          }
+
+          fetch_binary \
+            "sqlite-vec-${version}-loadable-linux-x86_64.tar.gz" \
+            'resources/sqlite-vec/linux-gnu-x86_64/vec0.so' \
+            '754b46a02b3caba9b1c75aeaeb8f8177a61f527b531151f7de5324ba4c10d444'
+
+          fetch_binary \
+            "sqlite-vec-${version}-loadable-linux-aarch64.tar.gz" \
+            'resources/sqlite-vec/linux-gnu-arm64/vec0.so' \
+            '3634a8ee85db96f8a5d1779dbfb24eeab56e12cd5c7bb5932c3a58ebc2466a28'
+
+      - name: Commit vendored binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- resources/sqlite-vec; then
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add resources/sqlite-vec/linux-gnu-x86_64/vec0.so resources/sqlite-vec/linux-gnu-arm64/vec0.so
+          git commit -m 'chore: vendor pinned sqlite-vec binaries'
+          git push origin HEAD:${GITHUB_REF_NAME}
