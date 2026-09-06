@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- Fix target-based `GraphStore::incoming()` reads so SQLite starts from the indexed `(target_id, relation_id)` relation-target lookup instead of scanning relations through a correlated `EXISTS` predicate.
+- Preserve canonical relation order, grouped multi-target reconstruction, kind filtering, and existing GraphStore semantics while removing the pathological reverse-traversal cost exposed by agent-map's 70 MiB graph benchmark.
+
 ## 0.2.0
 
 - Add the versioned, domain-neutral `GraphProjection` and `GraphRelation` contract for ordered structural relations.
