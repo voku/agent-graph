@@ -18,8 +18,9 @@ jobs:
         with:
           ref: fix/indexed-incoming-query
       - name: Rewrite incoming query to start from indexed targets
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path('src/Sqlite/SqliteRelationStore.php')
@@ -155,6 +156,7 @@ jobs:
           text = text.replace(old_tail, new_tail, 1)
 
           path.write_text(text)
+          PY
       - name: Commit patch
         shell: bash
         run: |
