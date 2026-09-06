@@ -89,11 +89,7 @@ final class SqliteRelationStore
     {
         $this->assertReadable();
 
-        return $this->relationsFor(
-            'r.source_id = :node_id',
-            $sourceId,
-            $kind,
-        );
+        return $this->relationsFor('r.source_id = :node_id', $sourceId, $kind);
     }
 
     /** @return list<GraphRelation> */
@@ -218,9 +214,7 @@ final class SqliteRelationStore
         }
     }
 
-    /**
-     * @return list<GraphRelation>
-     */
+    /** @return list<GraphRelation> */
     private function relationsFor(string $predicate, string $nodeId, ?string $kind): array
     {
         $kindPredicate = $kind === null ? '' : ' AND r.kind = :kind';
@@ -244,30 +238,38 @@ final class SqliteRelationStore
         $order = [];
 
         foreach ($statement->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $relationId = (string) $row['relation_id'];
+            if (!is_array($row)) {
+                throw new RuntimeException('SQLite graph relation row is not an array.');
+            }
+
+            $relationId = $this->stringColumn($row['relation_id'] ?? null, 'relation_id');
             if (!isset($grouped[$relationId])) {
                 $grouped[$relationId] = [
-                    'source_id' => (string) $row['source_id'],
-                    'kind' => (string) $row['kind'],
+                    'source_id' => $this->stringColumn($row['source_id'] ?? null, 'source_id'),
+                    'kind' => $this->stringColumn($row['kind'] ?? null, 'kind'),
                     'target_ids' => [],
                 ];
                 $order[] = $relationId;
             }
-            $grouped[$relationId]['target_ids'][] = (string) $row['target_id'];
+            $grouped[$relationId]['target_ids'][] = $this->stringColumn($row['target_id'] ?? null, 'target_id');
         }
 
         $relations = [];
         foreach ($order as $relationId) {
             $row = $grouped[$relationId];
-            $relations[] = new GraphRelation(
-                $relationId,
-                $row['source_id'],
-                $row['kind'],
-                $row['target_ids'],
-            );
+            $relations[] = new GraphRelation($relationId, $row['source_id'], $row['kind'], $row['target_ids']);
         }
 
         return $relations;
+    }
+
+    private function stringColumn(mixed $value, string $column): string
+    {
+        if (!is_string($value) && !is_int($value) && !is_float($value)) {
+            throw new RuntimeException('SQLite graph column is not scalar: ' . $column);
+        }
+
+        return (string) $value;
     }
 
     private function meta(string $key): ?string
