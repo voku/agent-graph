@@ -57,6 +57,12 @@ final class GraphStore
         return $this->relations->outgoing($sourceId, $kind);
     }
 
+    /** @return iterable<GraphRelation> */
+    public function relations(): iterable
+    {
+        return $this->relations->relations();
+    }
+
     /** @return list<string> */
     public function neighbours(string $nodeId, ?string $kind = null): array
     {
