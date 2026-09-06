@@ -13,10 +13,12 @@ use voku\AgentGraph\Graph\TraversalDirection;
 final class GraphStore
 {
     private SqliteRelationStore $relations;
+    private SqliteIncomingRelationQuery $incomingQuery;
 
     public function __construct(string $databaseFile)
     {
         $this->relations = new SqliteRelationStore($databaseFile);
+        $this->incomingQuery = new SqliteIncomingRelationQuery($databaseFile);
     }
 
     /**
@@ -48,7 +50,7 @@ final class GraphStore
     /** @return list<GraphRelation> */
     public function incoming(string $targetId, ?string $kind = null): array
     {
-        return $this->relations->incoming($targetId, $kind);
+        return $this->incomingQuery->incoming($targetId, $kind);
     }
 
     /** @return list<GraphRelation> */
