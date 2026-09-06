@@ -1,0 +1,32 @@
+{
+  "name": "voku/agent-graph",
+  "description": "Deterministic SQLite graph indexing and shared SQLite runtime support for coding-agent tooling.",
+  "type": "library",
+  "license": "MIT",
+  "homepage": "https://github.com/voku/agent-graph",
+  "support": {
+    "issues": "https://github.com/voku/agent-graph/issues",
+    "source": "https://github.com/voku/agent-graph"
+  },
+  "keywords": [
+    "agent",
+    "coding-agent",
+    "graph",
+    "sqlite",
+    "sqlite-vec"
+  ],
+  "authors": [
+    {
+      "name": "Lars Moelleken",
+      "homepage": "https://github.com/voku"
+    }
+  ],
+  "require": {
+    "php": ">=8.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "voku\\AgentGraph\\": "src/"
+    }
+  }
+}
