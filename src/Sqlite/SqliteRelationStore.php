@@ -27,8 +27,6 @@ final class SqliteRelationStore
 
         $this->pdo = new PDO('sqlite:' . $databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
         $this->pdo->exec('PRAGMA foreign_keys = ON');
-        $this->pdo->exec('PRAGMA journal_mode = WAL');
-        $this->pdo->exec('PRAGMA synchronous = NORMAL');
         $this->migrate();
     }
 
