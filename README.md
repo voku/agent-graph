@@ -1,29 +1,43 @@
 # agent-graph
 
-Small, deterministic SQLite graph infrastructure for the `voku/agent-*` toolchain.
+Small, deterministic SQLite graph index/query infrastructure for the `voku/agent-*` toolchain.
 
-The package owns reusable graph storage/query mechanics and shared SQLite runtime assets. Domain semantics stay with their producers: `agent-map` owns repository/code relations, `agent-learning` owns learning lineage, and consumers use their typed owner APIs rather than reading graph databases directly.
+The package owns reusable graph storage/query mechanics and shared SQLite runtime assets. Domain semantics stay with their producers: `agent-map` owns repository/code relations, `agent-learning` owns learning lineage, and consumers use those owners rather than reading another package's graph database directly.
 
-## Structural graph contract
+## GraphStore
 
-`GraphProjection` is the logical, versioned contract. SQLite is a derived implementation detail.
-
-A projection contains ordered `GraphRelation` values with only:
+`GraphStore` is the primary consumer boundary. Owners project only structural identity into ordered `GraphRelation` values:
 
 - relation id;
 - source id;
 - relation kind;
 - ordered target ids.
 
-`GraphProjectionValidator` rejects malformed projections before storage. Empty projections fail by default and must be explicitly allowed when an owner legitimately has no relations. Self-relations and unresolved/external target ids remain legal because domain owners decide what those ids mean.
+A relation may keep multiple targets. That grouping is part of the evidence and is not flattened into unrelated binary edges.
 
-`GraphAdjacency` provides deterministic in-memory incoming/outgoing lookups without adding domain policy.
+`GraphStore::replace()` accepts an `iterable<GraphRelation>` and replaces the complete derived graph transactionally without requiring callers to allocate a second graph array. The store records opaque source revision/fingerprint provenance so an owner can reject a stale derived database after its canonical data changes.
+
+Reads provide:
+
+- indexed incoming relations;
+- indexed outgoing relations;
+- unique deterministic neighbours;
+- streamed whole-graph relation iteration;
+- bounded, cycle-safe incoming/outgoing traversal with explicit truncation.
+
+SQLite rows are an internal normalization. The public relation model stays grouped and domain-neutral.
+
+## Structural graph contract
+
+`GraphProjection` remains the versioned logical projection used by callers that already have an in-memory relation list. `GraphProjectionValidator` rejects malformed projections before storage. Empty projections fail by default and must be explicitly allowed when an owner legitimately has no relations. Self-relations and unresolved/external target ids remain legal because domain owners decide what those ids mean.
+
+`GraphAdjacency` remains available as a deterministic in-memory view, but persistent consumers should prefer `GraphStore` when the point is to avoid decoding or indexing a large relation set in PHP.
 
 ## SQLite relation store
 
-`SqliteRelationStore` persists a validated projection as a rebuildable SQLite index. It preserves relation order and target order, supports incoming/outgoing queries with optional kind filters, replaces the complete derived graph atomically, records schema and projection provenance, and exposes integrity checks.
+`SqliteRelationStore` is the low-level storage implementation behind `GraphStore`. It preserves relation order and target order, supports optional kind filters, replaces the complete derived graph atomically, records schema/projection provenance, and exposes integrity checks.
 
-The store is intentionally independent from `sqlite-vec`; ordinary relation indexing works without vector support.
+Ordinary relation storage stays a single SQLite artifact by default. The package does not force WAL or synchronous tuning without measured evidence. The store is independent from `sqlite-vec`; relation indexing works without vector support.
 
 ## sqlite-vec runtime
 
@@ -40,4 +54,4 @@ The bundled binaries are derived from `asg017/sqlite-vec`; see `docs/reference/t
 
 ## Scope
 
-This repository should remain boring. It is not an owner of PHP symbols, findings, LearningNotes, embeddings, ranking policy, workflow state, or prompt generation.
+This repository should remain boring. It is not an owner of PHP symbols, findings, LearningNotes, embeddings, ranking policy, workflow state, prompt generation, or an untyped metadata bag.
