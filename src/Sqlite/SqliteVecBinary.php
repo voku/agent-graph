@@ -32,7 +32,12 @@ final readonly class SqliteVecBinary
         }
 
         $manifest = self::manifest();
-        $entry = $manifest['binaries'][$platform] ?? null;
+        $binaries = $manifest['binaries'] ?? null;
+        if (!is_array($binaries)) {
+            return null;
+        }
+
+        $entry = $binaries[$platform] ?? null;
         if (!is_array($entry) || !is_string($entry['file'] ?? null) || !is_string($entry['sha256'] ?? null)) {
             return null;
         }
