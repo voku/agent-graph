@@ -1,11 +1,7 @@
-name: Bootstrap sqlite-vec binaries
+name: Vendor sqlite-vec binaries
 
 on:
-  push:
-    branches:
-      - feat/sqlite-vec-runtime
-    paths:
-      - .github/workflows/bootstrap-sqlite-vec.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -21,16 +17,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          version='0.1.7-alpha.2'
+          manifest='resources/sqlite-vec/manifest.json'
+          version="$(jq -r '.version | ltrimstr("v")' "${manifest}")"
           base="https://github.com/asg017/sqlite-vec/releases/download/v${version}"
 
           fetch_binary() {
-            local asset="$1"
-            local destination="$2"
-            local expected_sha256="$3"
+            local platform="$1"
+            local destination="resources/sqlite-vec/${platform}/vec0.so"
+            local asset
+            local expected_sha256
             local temporary
             local unpacked
             local binary
+
+            asset="$(jq -r --arg platform "${platform}" '.binaries[$platform].asset' "${manifest}")"
+            expected_sha256="$(jq -r --arg platform "${platform}" '.binaries[$platform].sha256' "${manifest}")"
+
+            test -n "${asset}"
+            test "${asset}" != 'null'
+            test -n "${expected_sha256}"
+            test "${expected_sha256}" != 'null'
 
             temporary="$(mktemp)"
             unpacked="$(mktemp -d)"
@@ -51,15 +57,8 @@ jobs:
             rm -rf "${unpacked}"
           }
 
-          fetch_binary \
-            "sqlite-vec-${version}-loadable-linux-x86_64.tar.gz" \
-            'resources/sqlite-vec/linux-gnu-x86_64/vec0.so' \
-            '754b46a02b3caba9b1c75aeaeb8f8177a61f527b531151f7de5324ba4c10d444'
-
-          fetch_binary \
-            "sqlite-vec-${version}-loadable-linux-aarch64.tar.gz" \
-            'resources/sqlite-vec/linux-gnu-arm64/vec0.so' \
-            '3634a8ee85db96f8a5d1779dbfb24eeab56e12cd5c7bb5932c3a58ebc2466a28'
+          fetch_binary 'linux-gnu-x86_64'
+          fetch_binary 'linux-gnu-arm64'
 
       - name: Commit vendored binaries
         shell: bash
