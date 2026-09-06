@@ -4,6 +4,27 @@ Small, deterministic SQLite graph infrastructure for the `voku/agent-*` toolchai
 
 The package owns reusable graph storage/query mechanics and shared SQLite runtime assets. Domain semantics stay with their producers: `agent-map` owns repository/code relations, `agent-learning` owns learning lineage, and consumers use their typed owner APIs rather than reading graph databases directly.
 
+## Structural graph contract
+
+`GraphProjection` is the logical, versioned contract. SQLite is a derived implementation detail.
+
+A projection contains ordered `GraphRelation` values with only:
+
+- relation id;
+- source id;
+- relation kind;
+- ordered target ids.
+
+`GraphProjectionValidator` rejects malformed projections before storage. Empty projections fail by default and must be explicitly allowed when an owner legitimately has no relations. Self-relations and unresolved/external target ids remain legal because domain owners decide what those ids mean.
+
+`GraphAdjacency` provides deterministic in-memory incoming/outgoing lookups without adding domain policy.
+
+## SQLite relation store
+
+`SqliteRelationStore` persists a validated projection as a rebuildable SQLite index. It preserves relation order and target order, supports incoming/outgoing queries with optional kind filters, replaces the complete derived graph atomically, records schema and projection provenance, and exposes integrity checks.
+
+The store is intentionally independent from `sqlite-vec`; ordinary relation indexing works without vector support.
+
 ## sqlite-vec runtime
 
 `agent-graph` ships the pinned `sqlite-vec` loadable SQLite extension used by graph/search consumers on the Linux platforms we actually support:
