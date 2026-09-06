@@ -1,0 +1,38 @@
+name: Tag agent-graph 0.1.0
+
+on:
+  push:
+    branches:
+      - release-tag/0.1.0
+    paths:
+      - .github/workflows/tag-0.1.0.yml
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify marker and create annotated tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TARGET=$(php -r '$marker=json_decode(file_get_contents(".release/0.1.0.json"), true, 512, JSON_THROW_ON_ERROR); echo $marker["target_sha"];')
+          test "$TARGET" = "789509a6861dbb5442cc837985e625e4a5bc647f"
+          git cat-file -e "$TARGET^{commit}"
+
+          if git rev-parse --verify --quiet refs/tags/0.1.0 >/dev/null; then
+            EXISTING=$(git rev-list -n 1 refs/tags/0.1.0)
+            test "$EXISTING" = "$TARGET"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a 0.1.0 "$TARGET" -m "agent-graph 0.1.0"
+          git push origin refs/tags/0.1.0
