@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace voku\AgentGraph\Sqlite;
 
+use InvalidArgumentException;
 use PDO;
 use RuntimeException;
 use Throwable;
@@ -11,6 +12,8 @@ use voku\AgentGraph\Graph\GraphProjection;
 use voku\AgentGraph\Graph\GraphProjectionValidator;
 use voku\AgentGraph\Graph\GraphRelation;
 use voku\AgentGraph\Graph\GraphValidationException;
+use voku\AgentGraph\Graph\GraphValidationIssue;
+use voku\AgentGraph\Graph\GraphValidationReport;
 
 final class SqliteRelationStore
 {
@@ -37,6 +40,44 @@ final class SqliteRelationStore
             throw new GraphValidationException($report);
         }
 
+        $this->replaceRelations(
+            $projection->relations,
+            projectionVersion: $projection->version,
+            allowEmpty: $allowEmpty,
+        );
+    }
+
+    /**
+     * Replace the complete graph without requiring the caller to materialize all relations in memory.
+     *
+     * @param iterable<GraphRelation> $relations
+     */
+    public function replaceRelations(
+        iterable $relations,
+        string $projectionVersion = GraphProjection::VERSION,
+        ?string $sourceRevision = null,
+        ?string $sourceFingerprint = null,
+        bool $allowEmpty = false,
+    ): void {
+        if ($projectionVersion !== GraphProjection::VERSION) {
+            throw new GraphValidationException(new GraphValidationReport([
+                new GraphValidationIssue(
+                    GraphValidationIssue::ERROR,
+                    'projection.unsupported_version',
+                    sprintf('Unsupported graph projection version "%s".', $projectionVersion),
+                ),
+            ]));
+        }
+        if (($sourceRevision === null) !== ($sourceFingerprint === null)) {
+            throw new InvalidArgumentException('Graph source revision and fingerprint must be supplied together.');
+        }
+        if ($sourceRevision !== null && trim($sourceRevision) === '') {
+            throw new InvalidArgumentException('Graph source revision must be non-empty when supplied.');
+        }
+        if ($sourceFingerprint !== null && trim($sourceFingerprint) === '') {
+            throw new InvalidArgumentException('Graph source fingerprint must be non-empty when supplied.');
+        }
+
         $this->assertSchemaCompatible();
         $this->pdo->beginTransaction();
 
@@ -53,10 +94,16 @@ final class SqliteRelationStore
                  VALUES (:relation_id, :target_id, :target_position)',
             );
 
-            foreach ($projection->relations as $relationPosition => $relation) {
+            $relationCount = 0;
+            foreach ($relations as $relation) {
+                if (!$relation instanceof GraphRelation) {
+                    throw new InvalidArgumentException('Graph relation stream must contain only GraphRelation values.');
+                }
+                $this->assertValidRelation($relation);
+
                 $relationInsert->execute([
                     'relation_id' => $relation->id,
-                    'relation_position' => $relationPosition,
+                    'relation_position' => $relationCount,
                     'source_id' => $relation->sourceId,
                     'kind' => $relation->kind,
                 ]);
@@ -68,10 +115,28 @@ final class SqliteRelationStore
                         'target_position' => $targetPosition,
                     ]);
                 }
+                ++$relationCount;
             }
 
-            $this->setMeta('projection_version', $projection->version);
-            $this->setMeta('relation_count', (string) count($projection->relations));
+            if ($relationCount === 0 && !$allowEmpty) {
+                throw new GraphValidationException(new GraphValidationReport([
+                    new GraphValidationIssue(
+                        GraphValidationIssue::ERROR,
+                        'projection.empty',
+                        'Graph projection is empty but emptiness was not explicitly allowed.',
+                    ),
+                ]));
+            }
+
+            $this->setMeta('projection_version', $projectionVersion);
+            $this->setMeta('relation_count', (string) $relationCount);
+            if ($sourceRevision === null) {
+                $this->deleteMeta('source_revision');
+                $this->deleteMeta('source_fingerprint');
+            } else {
+                $this->setMeta('source_revision', $sourceRevision);
+                $this->setMeta('source_fingerprint', (string) $sourceFingerprint);
+            }
             $this->pdo->commit();
         } catch (Throwable $exception) {
             if ($this->pdo->inTransaction()) {
@@ -110,6 +175,16 @@ final class SqliteRelationStore
         return $this->meta('projection_version');
     }
 
+    public function sourceRevision(): ?string
+    {
+        return $this->meta('source_revision');
+    }
+
+    public function sourceFingerprint(): ?string
+    {
+        return $this->meta('source_fingerprint');
+    }
+
     public function relationCount(): int
     {
         $value = $this->meta('relation_count');
@@ -143,6 +218,12 @@ final class SqliteRelationStore
         $projectionVersion = $this->projectionVersion();
         if ($projectionVersion !== null && $projectionVersion !== GraphProjection::VERSION) {
             $failures[] = 'projection_version_mismatch';
+        }
+
+        $sourceRevision = $this->sourceRevision();
+        $sourceFingerprint = $this->sourceFingerprint();
+        if (($sourceRevision === null) !== ($sourceFingerprint === null)) {
+            $failures[] = 'source_provenance_incomplete';
         }
 
         return $failures;
@@ -209,6 +290,40 @@ final class SqliteRelationStore
                 self::SCHEMA_VERSION,
                 $schemaVersion ?? 'missing',
             ));
+        }
+    }
+
+    private function assertValidRelation(GraphRelation $relation): void
+    {
+        $issues = [];
+        if (trim($relation->id) === '') {
+            $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.empty_id', 'Relation id must be non-empty.');
+        }
+        if (trim($relation->sourceId) === '') {
+            $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.empty_source', 'Relation source id must be non-empty.', $relation->id !== '' ? $relation->id : null);
+        }
+        if (trim($relation->kind) === '') {
+            $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.empty_kind', 'Relation kind must be non-empty.', $relation->id !== '' ? $relation->id : null);
+        }
+        if ($relation->targetIds === []) {
+            $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.empty_targets', 'Relation must contain at least one target id.', $relation->id !== '' ? $relation->id : null);
+        }
+
+        $seenTargets = [];
+        foreach ($relation->targetIds as $targetId) {
+            if (trim($targetId) === '') {
+                $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.empty_target', 'Relation target id must be non-empty.', $relation->id !== '' ? $relation->id : null);
+                continue;
+            }
+            if (isset($seenTargets[$targetId])) {
+                $issues[] = new GraphValidationIssue(GraphValidationIssue::ERROR, 'relation.duplicate_target', 'Relation target ids must be unique within one relation.', $relation->id !== '' ? $relation->id : null);
+                continue;
+            }
+            $seenTargets[$targetId] = true;
+        }
+
+        if ($issues !== []) {
+            throw new GraphValidationException(new GraphValidationReport($issues));
         }
     }
 
@@ -286,5 +401,11 @@ final class SqliteRelationStore
              ON CONFLICT(key) DO UPDATE SET value = excluded.value',
         );
         $statement->execute(['key' => $key, 'value' => $value]);
+    }
+
+    private function deleteMeta(string $key): void
+    {
+        $statement = $this->pdo->prepare('DELETE FROM graph_meta WHERE key = :key');
+        $statement->execute(['key' => $key]);
     }
 }
