@@ -4,8 +4,10 @@
 
 - Add the versioned, domain-neutral `GraphProjection` and `GraphRelation` contract for ordered structural relations.
 - Add deterministic projection validation with structured findings and explicit opt-in for intentionally empty graphs.
-- Add the reusable in-memory `GraphAdjacency` view with deterministic incoming/outgoing relation ordering and optional kind filters.
-- Add `SqliteRelationStore` as a rebuildable derived SQLite relation index with atomic replacement, ordered multi-target reconstruction, schema/projection provenance, integrity checks, and fail-closed reads.
+- Add `GraphStore` as the public SQLite graph index/query boundary with streaming whole-graph replacement, streamed relation iteration, source revision/fingerprint provenance, indexed incoming/outgoing/neighbour queries, and deterministic bounded cycle-safe traversal.
+- Preserve relation order and grouped multi-target order without requiring callers to materialize a second graph array in PHP.
+- Keep `SqliteRelationStore` as the low-level rebuildable SQLite implementation with atomic replacement, schema/projection checks, integrity checks, and fail-closed reads.
+- Keep ordinary relation storage single-file by default rather than forcing WAL/synchronous tuning without benchmark evidence.
 - Keep graph mechanics independent from PHP symbols, LearningNotes, ranking policy, workflow state, embeddings, and sqlite-vec availability.
 
 ## 0.1.0
