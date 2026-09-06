@@ -37,13 +37,17 @@ final class SqliteVecBinaryTest extends TestCase
     public function testExplicitExistingOverrideWins(): void
     {
         $temporaryFile = tempnam(sys_get_temp_dir(), 'agent-graph-sqlite-vec-');
-        self::assertIsString($temporaryFile);
+        if ($temporaryFile === false) {
+            self::fail('Unable to create temporary sqlite-vec override file.');
+        }
 
         try {
             self::assertTrue(putenv(SqliteVecBinary::ENVIRONMENT_OVERRIDE . '=' . $temporaryFile));
             self::assertSame($temporaryFile, SqliteVecBinary::resolve());
         } finally {
-            @unlink($temporaryFile);
+            if (is_file($temporaryFile)) {
+                unlink($temporaryFile);
+            }
         }
     }
 }
