@@ -28,18 +28,15 @@ final class GraphStoreTest extends TestCase
 
     public function testStreamingReplacementPreservesProvenanceAndIndexedReads(): void
     {
-        $consumed = false;
-        $relations = (static function () use (&$consumed): iterable {
+        $relations = (static function (): iterable {
             yield new GraphRelation('r2', 'source', 'calls', ['target-b', 'target-a']);
             yield new GraphRelation('r1', 'source', 'extends', ['target-a']);
             yield new GraphRelation('r3', 'other', 'calls', ['target-a']);
-            $consumed = true;
         })();
 
         $store = new GraphStore($this->databaseFile);
         $store->replace($relations, 'map:abc', 'sha256:def');
 
-        self::assertTrue($consumed);
         self::assertSame('map:abc', $store->sourceRevision());
         self::assertSame('sha256:def', $store->sourceFingerprint());
         self::assertSame(3, $store->relationCount());
@@ -48,6 +45,21 @@ final class GraphStoreTest extends TestCase
         self::assertSame(['r2', 'r1', 'r3'], $this->ids($store->incoming('target-a')));
         self::assertSame(['target-b', 'target-a'], $store->outgoing('source', 'calls')[0]->targetIds);
         self::assertSame([], $store->integrityFailures());
+    }
+
+    public function testStoredRelationsCanBeStreamedInInsertionOrder(): void
+    {
+        $store = new GraphStore($this->databaseFile);
+        $store->replace([
+            new GraphRelation('r2', 'source', 'calls', ['target-b', 'target-a']),
+            new GraphRelation('r1', 'source', 'extends', ['target-a']),
+            new GraphRelation('r3', 'other', 'calls', ['target-a']),
+        ], 'map:stream', 'sha256:stream');
+
+        $relations = iterator_to_array($store->relations(), false);
+
+        self::assertSame(['r2', 'r1', 'r3'], $this->ids($relations));
+        self::assertSame(['target-b', 'target-a'], $relations[0]->targetIds);
     }
 
     public function testNeighboursAreUniqueAndDeterministicallySorted(): void
