@@ -48,6 +48,18 @@ final class SqliteRelationStoreTest extends TestCase
         self::assertSame([], $store->integrityFailures());
     }
 
+    public function testRelationStoreDoesNotRequireWalSidecars(): void
+    {
+        $store = new SqliteRelationStore($this->databaseFile);
+        $store->replace(new GraphProjection([
+            new GraphRelation('r1', 'source', 'calls', ['target']),
+        ]));
+
+        self::assertFileExists($this->databaseFile);
+        self::assertFileDoesNotExist($this->databaseFile . '-wal');
+        self::assertFileDoesNotExist($this->databaseFile . '-shm');
+    }
+
     public function testEmptyProjectionRequiresExplicitOptIn(): void
     {
         $store = new SqliteRelationStore($this->databaseFile);
