@@ -96,9 +96,6 @@ final class SqliteRelationStore
 
             $relationCount = 0;
             foreach ($relations as $relation) {
-                if (!$relation instanceof GraphRelation) {
-                    throw new InvalidArgumentException('Graph relation stream must contain only GraphRelation values.');
-                }
                 $this->assertValidRelation($relation);
 
                 $relationInsert->execute([
@@ -168,6 +165,52 @@ final class SqliteRelationStore
             $targetId,
             $kind,
         );
+    }
+
+    /** @return iterable<GraphRelation> */
+    public function relations(): iterable
+    {
+        $this->assertReadable();
+
+        $statement = $this->pdo->query(
+            'SELECT r.relation_id, r.source_id, r.kind,
+                    t.target_id, t.target_position
+             FROM graph_relations r
+             JOIN graph_relation_targets t ON t.relation_id = r.relation_id
+             ORDER BY r.relation_position, t.target_position',
+        );
+        if ($statement === false) {
+            throw new RuntimeException('Unable to read graph relations.');
+        }
+
+        $relationId = null;
+        $sourceId = '';
+        $kind = '';
+        $targetIds = [];
+
+        while (($row = $statement->fetch(PDO::FETCH_ASSOC)) !== false) {
+            if (!is_array($row)) {
+                throw new RuntimeException('SQLite graph relation row is not an array.');
+            }
+
+            $currentRelationId = $this->stringColumn($row['relation_id'] ?? null, 'relation_id');
+            if ($relationId !== null && $currentRelationId !== $relationId) {
+                yield new GraphRelation($relationId, $sourceId, $kind, $targetIds);
+                $targetIds = [];
+            }
+
+            if ($relationId === null || $currentRelationId !== $relationId) {
+                $relationId = $currentRelationId;
+                $sourceId = $this->stringColumn($row['source_id'] ?? null, 'source_id');
+                $kind = $this->stringColumn($row['kind'] ?? null, 'kind');
+            }
+
+            $targetIds[] = $this->stringColumn($row['target_id'] ?? null, 'target_id');
+        }
+
+        if ($relationId !== null) {
+            yield new GraphRelation($relationId, $sourceId, $kind, $targetIds);
+        }
     }
 
     public function projectionVersion(): ?string
