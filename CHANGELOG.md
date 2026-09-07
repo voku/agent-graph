@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- Update the bundled sqlite-vec runtime from `v0.1.7-alpha.2` to stable `v0.1.9` for Linux GNU x86_64 and arm64 while preserving the existing `SqliteVecBinary` API and checksum-verified resolution contract.
+- Harden sqlite-vec maintenance so updates verify GitHub release-asset SHA-256 digests, run package CI plus load/create/insert/k-NN/delete smoke proof before publishing the versioned automation branch, and keep the manifest as the single version authority without requiring Actions permission to create pull requests.
+
 ## 0.2.1
 
 - Fix target-based `GraphStore::incoming()` reads so SQLite starts from the indexed `(target_id, relation_id)` relation-target lookup instead of scanning relations through a correlated `EXISTS` predicate.
