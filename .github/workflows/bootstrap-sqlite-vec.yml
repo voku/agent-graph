@@ -1,76 +1,320 @@
-name: Vendor sqlite-vec binaries
+name: Update sqlite-vec runtime
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'sqlite-vec release tag to vendor, for example v0.1.9, or latest'
+        required: true
+        default: latest
+        type: string
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
-  vendor:
+  update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
 
-      - name: Download and verify pinned sqlite-vec binaries
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+          extensions: pdo_sqlite
+
+      - name: Install development dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Resolve release and vendor verified binaries
+        id: vendor
         shell: bash
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
 
-          manifest='resources/sqlite-vec/manifest.json'
-          version="$(jq -r '.version | ltrimstr("v")' "${manifest}")"
-          base="https://github.com/asg017/sqlite-vec/releases/download/v${version}"
+          requested="${REQUESTED_VERSION}"
+          if [[ "${requested}" != 'latest' && ! "${requested}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Unsupported sqlite-vec version input: ${requested}" >&2
+            exit 1
+          fi
 
-          fetch_binary() {
+          temporary="$(mktemp -d)"
+          trap 'rm -rf "${temporary}"' EXIT
+
+          if [[ "${requested}" == 'latest' ]]; then
+            release_api='https://api.github.com/repos/asg017/sqlite-vec/releases/latest'
+          else
+            release_api="https://api.github.com/repos/asg017/sqlite-vec/releases/tags/${requested}"
+          fi
+
+          curl --fail --location --silent --show-error \
+            --header 'Accept: application/vnd.github+json' \
+            "${release_api}" \
+            --output "${temporary}/release.json"
+
+          version="$(jq -er '.tag_name' "${temporary}/release.json")"
+          source_url="$(jq -er '.html_url' "${temporary}/release.json")"
+
+          if [[ ! "${version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Upstream returned an unexpected sqlite-vec tag: ${version}" >&2
+            exit 1
+          fi
+
+          x86_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-x86_64.tar.gz"))][0]' "${temporary}/release.json")"
+          arm64_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-aarch64.tar.gz"))][0]' "${temporary}/release.json")"
+          checksums_url="$(jq -er '.assets[] | select(.name == "checksums.txt") | .browser_download_url' "${temporary}/release.json")"
+
+          curl --fail --location --silent --show-error \
+            "${checksums_url}" \
+            --output "${temporary}/checksums.txt"
+
+          vendor_binary() {
             local platform="$1"
-            local destination="resources/sqlite-vec/${platform}/vec0.so"
-            local asset
-            local expected_sha256
-            local temporary
+            local asset="$2"
+            local expected_archive_sha256
+            local asset_url
+            local archive
             local unpacked
             local binary
+            local destination
 
-            asset="$(jq -r --arg platform "${platform}" '.binaries[$platform].asset' "${manifest}")"
-            expected_sha256="$(jq -r --arg platform "${platform}" '.binaries[$platform].sha256' "${manifest}")"
+            expected_archive_sha256="$(awk -v asset="${asset}" '$2 == asset || $2 == "*" asset { print $1; exit }' "${temporary}/checksums.txt")"
+            if [[ ! "${expected_archive_sha256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+              echo "No valid upstream checksum found for ${asset}" >&2
+              exit 1
+            fi
 
-            test -n "${asset}"
-            test "${asset}" != 'null'
-            test -n "${expected_sha256}"
-            test "${expected_sha256}" != 'null'
-
-            temporary="$(mktemp)"
-            unpacked="$(mktemp -d)"
+            asset_url="$(jq -er --arg asset "${asset}" '.assets[] | select(.name == $asset) | .browser_download_url' "${temporary}/release.json")"
+            archive="${temporary}/${asset}"
+            unpacked="${temporary}/unpacked-${platform}"
+            destination="resources/sqlite-vec/${platform}/vec0.so"
 
             curl --fail --location --silent --show-error \
-              "${base}/${asset}" \
-              --output "${temporary}"
-            tar -xzf "${temporary}" -C "${unpacked}"
+              "${asset_url}" \
+              --output "${archive}"
 
+            printf '%s  %s\n' "${expected_archive_sha256}" "${archive}" \
+              | sha256sum --check --strict --status
+
+            mkdir -p "${unpacked}"
+            tar -xzf "${archive}" -C "${unpacked}"
             binary="$(find "${unpacked}" -type f -name 'vec0.so' -print -quit)"
             test -n "${binary}"
 
             mkdir -p "$(dirname "${destination}")"
             install -m 0644 "${binary}" "${destination}"
-            printf '%s  %s\n' "${expected_sha256}" "${destination}" | sha256sum --check --strict
 
-            rm -f "${temporary}"
-            rm -rf "${unpacked}"
+            sha256sum "${destination}" | awk '{ print $1 }'
           }
 
-          fetch_binary 'linux-gnu-x86_64'
-          fetch_binary 'linux-gnu-arm64'
+          x86_sha256="$(vendor_binary 'linux-gnu-x86_64' "${x86_asset}")"
+          arm64_sha256="$(vendor_binary 'linux-gnu-arm64' "${arm64_asset}")"
 
-      - name: Commit vendored binaries
+          manifest='resources/sqlite-vec/manifest.json'
+          jq \
+            --arg version "${version}" \
+            --arg source "${source_url}" \
+            --arg x86_asset "${x86_asset}" \
+            --arg x86_sha256 "${x86_sha256}" \
+            --arg arm64_asset "${arm64_asset}" \
+            --arg arm64_sha256 "${arm64_sha256}" \
+            '.version = $version
+             | .source = $source
+             | .binaries["linux-gnu-x86_64"].asset = $x86_asset
+             | .binaries["linux-gnu-x86_64"].sha256 = $x86_sha256
+             | .binaries["linux-gnu-arm64"].asset = $arm64_asset
+             | .binaries["linux-gnu-arm64"].sha256 = $arm64_sha256' \
+            "${manifest}" > "${temporary}/manifest.json"
+          mv "${temporary}/manifest.json" "${manifest}"
+
+          export TARGET_VERSION="${version}"
+          export TARGET_SOURCE_URL="${source_url}"
+          python3 <<'PY'
+          import os
+          import pathlib
+          import re
+
+          path = pathlib.Path('docs/reference/third-party-notices.md')
+          text = path.read_text()
+          version = os.environ['TARGET_VERSION']
+          source_url = os.environ['TARGET_SOURCE_URL']
+
+          text, version_count = re.subn(
+              r'^- Pinned version: `[^`]+`$',
+              f'- Pinned version: `{version}`',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          text, source_count = re.subn(
+              r'^- Source release: `[^`]+`$',
+              f'- Source release: `{source_url}`',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+
+          if version_count != 1 or source_count != 1:
+              raise SystemExit('Unable to update sqlite-vec third-party notice deterministically.')
+
+          path.write_text(text)
+          PY
+
+          printf '%s  %s\n' \
+            "$(jq -er '.binaries["linux-gnu-x86_64"].sha256' "${manifest}")" \
+            'resources/sqlite-vec/linux-gnu-x86_64/vec0.so' \
+            | sha256sum --check --strict
+          printf '%s  %s\n' \
+            "$(jq -er '.binaries["linux-gnu-arm64"].sha256' "${manifest}")" \
+            'resources/sqlite-vec/linux-gnu-arm64/vec0.so' \
+            | sha256sum --check --strict
+
+          echo "target_version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "source_url=${source_url}" >> "${GITHUB_OUTPUT}"
+          echo "TARGET_VERSION=${version}" >> "${GITHUB_ENV}"
+
+          if git diff --quiet -- \
+            resources/sqlite-vec/manifest.json \
+            resources/sqlite-vec/linux-gnu-x86_64/vec0.so \
+            resources/sqlite-vec/linux-gnu-arm64/vec0.so \
+            docs/reference/third-party-notices.md; then
+            echo 'changed=false' >> "${GITHUB_OUTPUT}"
+          else
+            echo 'changed=true' >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Run package checks
+        if: steps.vendor.outputs.changed == 'true'
+        run: composer ci
+
+      - name: Smoke-test the vendored extension
+        if: steps.vendor.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
 
-          if test -z "$(git status --porcelain -- resources/sqlite-vec)"; then
-            exit 0
-          fi
+          php <<'PHP'
+          <?php
+
+          declare(strict_types=1);
+
+          require 'vendor/autoload.php';
+
+          $path = \voku\AgentGraph\Sqlite\SqliteVecBinary::resolve();
+          if ($path === null) {
+              throw new \RuntimeException('The freshly vendored sqlite-vec binary did not resolve.');
+          }
+          if (!class_exists(\Pdo\Sqlite::class)) {
+              throw new \RuntimeException('Pdo\\Sqlite is unavailable on the validation runner.');
+          }
+
+          $pdo = new \Pdo\Sqlite('sqlite::memory:');
+          $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
+          $pdo->loadExtension($path);
+
+          $actualVersion = $pdo->query('SELECT vec_version()')->fetchColumn();
+          $expectedVersion = getenv('TARGET_VERSION');
+          if (!is_string($actualVersion) || !is_string($expectedVersion)) {
+              throw new \RuntimeException('Unable to read sqlite-vec version evidence.');
+          }
+          if ('v' . ltrim($actualVersion, 'v') !== 'v' . ltrim($expectedVersion, 'v')) {
+              throw new \RuntimeException(sprintf(
+                  'sqlite-vec version mismatch: expected %s, got %s.',
+                  $expectedVersion,
+                  $actualVersion,
+              ));
+          }
+
+          $pdo->exec('CREATE VIRTUAL TABLE vec_smoke USING vec0(rowid INTEGER PRIMARY KEY, embedding float[2])');
+          $pdo->exec("INSERT INTO vec_smoke(rowid, embedding) VALUES (1, '[1.0, 0.0]'), (2, '[0.0, 1.0]')");
+
+          $nearest = $pdo->query(
+              "SELECT rowid FROM vec_smoke WHERE embedding MATCH '[1.0, 0.0]' AND k = 1",
+          )->fetchColumn();
+          if ((int) $nearest !== 1) {
+              throw new \RuntimeException('sqlite-vec nearest-neighbour smoke test returned the wrong row.');
+          }
+
+          $pdo->exec('DELETE FROM vec_smoke WHERE rowid = 2');
+          $remaining = $pdo->query('SELECT COUNT(*) FROM vec_smoke')->fetchColumn();
+          if ((int) $remaining !== 1) {
+              throw new \RuntimeException('sqlite-vec delete smoke test failed.');
+          }
+
+          printf("sqlite-vec %s load/create/insert/query/delete smoke test passed.\n", $actualVersion);
+          PHP
+
+      - name: Create or update pull request
+        if: steps.vendor.outputs.changed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.vendor.outputs.target_version }}
+          SOURCE_URL: ${{ steps.vendor.outputs.source_url }}
+        run: |
+          set -euo pipefail
+
+          version_slug="${TARGET_VERSION#v}"
+          branch="automation/sqlite-vec-${version_slug}"
 
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add resources/sqlite-vec/linux-gnu-x86_64/vec0.so resources/sqlite-vec/linux-gnu-arm64/vec0.so
-          git commit -m 'chore: vendor pinned sqlite-vec binaries'
-          git push origin HEAD:${GITHUB_REF_NAME}
+          git switch -c "${branch}"
+          git add \
+            resources/sqlite-vec/manifest.json \
+            resources/sqlite-vec/linux-gnu-x86_64/vec0.so \
+            resources/sqlite-vec/linux-gnu-arm64/vec0.so \
+            docs/reference/third-party-notices.md
+          git commit -m "chore: update sqlite-vec to ${TARGET_VERSION}"
+
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${branch}" | awk '{ print $1 }')"
+          if [[ -n "${remote_sha}" ]]; then
+            git push --force-with-lease="refs/heads/${branch}:${remote_sha}" origin "HEAD:refs/heads/${branch}"
+          else
+            git push origin "HEAD:refs/heads/${branch}"
+          fi
+
+          existing_pr="$(gh pr list --state open --head "${branch}" --json url --jq '.[0].url // empty')"
+          if [[ -n "${existing_pr}" ]]; then
+            echo "Updated existing pull request: ${existing_pr}"
+            exit 0
+          fi
+
+          cat > /tmp/sqlite-vec-pr.md <<EOF
+          ## Goal
+
+          Update the `agent-graph`-owned sqlite-vec runtime to `${TARGET_VERSION}` from ${SOURCE_URL}.
+
+          ## Generated evidence
+
+          - upstream release metadata resolved from `asg017/sqlite-vec`;
+          - Linux x86_64 and arm64 release archives verified against upstream `checksums.txt` before extraction;
+          - bundled `vec0.so` SHA-256 values regenerated in the package manifest and verified again locally;
+          - `composer ci` passed against the updated runtime payload;
+          - the vendored extension loaded through `SqliteVecBinary` and passed `vec_version()`, vec0 create/insert/k-NN/delete smoke checks.
+
+          ## Boundary
+
+          This changes only the package-owned sqlite-vec runtime payload, manifest provenance, and third-party version notice. Graph semantics and consumer ranking/embedding policy remain unchanged.
+
+          Generated by `.github/workflows/bootstrap-sqlite-vec.yml`.
+          EOF
+
+          gh pr create \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "${branch}" \
+            --title "chore: update sqlite-vec to ${TARGET_VERSION}" \
+            --body-file /tmp/sqlite-vec-pr.md
+
+      - name: Report already-current runtime
+        if: steps.vendor.outputs.changed == 'false'
+        run: echo "sqlite-vec ${{ steps.vendor.outputs.target_version }} is already vendored exactly."
