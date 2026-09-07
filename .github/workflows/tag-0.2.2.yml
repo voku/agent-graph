@@ -10,11 +10,15 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-tag-0.2.2
+  cancel-in-progress: false
+
 jobs:
   tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           fetch-depth: 0
 
@@ -39,12 +43,17 @@ jobs:
 
           if git ls-remote --exit-code --tags origin refs/tags/0.2.2 >/dev/null 2>&1; then
             git fetch origin refs/tags/0.2.2:refs/tags/0.2.2 --force
+            existing_type="$(git cat-file -t refs/tags/0.2.2)"
+            if [[ "$existing_type" != 'tag' ]]; then
+              echo "Immutable tag 0.2.2 exists as $existing_type, not an annotated tag; refusing to accept it." >&2
+              exit 1
+            fi
             existing_target="$(git rev-list -n 1 0.2.2)"
             if [[ "$existing_target" != "$expected" ]]; then
               echo "Immutable tag 0.2.2 already exists at $existing_target; refusing to move or recreate it." >&2
               exit 1
             fi
-            echo "Immutable tag 0.2.2 already exists at the expected target."
+            echo "Immutable annotated tag 0.2.2 already exists at the expected target."
             exit 0
           fi
 
