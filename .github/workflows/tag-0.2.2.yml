@@ -22,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify immutable release target
+      - name: Verify and create immutable release tag
         shell: bash
         run: |
           set -euo pipefail
@@ -57,13 +57,7 @@ jobs:
             exit 0
           fi
 
-      - name: Create and push annotated tag
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          target='04b82bbae4d8b2cae85e118c884142a25b170cbe'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -a 0.2.2 "$target" -m 'agent-graph 0.2.2'
+          git tag -a 0.2.2 "$expected" -m 'agent-graph 0.2.2'
           git push origin refs/tags/0.2.2
