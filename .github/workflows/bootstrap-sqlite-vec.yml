@@ -71,15 +71,11 @@ jobs:
 
           x86_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-x86_64.tar.gz"))][0]' "${temporary}/release.json")"
           arm64_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-aarch64.tar.gz"))][0]' "${temporary}/release.json")"
-          checksums_url="$(jq -er '.assets[] | select(.name == "checksums.txt") | .browser_download_url' "${temporary}/release.json")"
-
-          curl --fail --location --silent --show-error \
-            "${checksums_url}" \
-            --output "${temporary}/checksums.txt"
 
           vendor_binary() {
             local platform="$1"
             local asset="$2"
+            local asset_digest
             local expected_archive_sha256
             local asset_url
             local archive
@@ -87,11 +83,12 @@ jobs:
             local binary
             local destination
 
-            expected_archive_sha256="$(awk -v asset="${asset}" '$2 == asset || $2 == "*" asset { print $1; exit }' "${temporary}/checksums.txt")"
-            if [[ ! "${expected_archive_sha256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
-              echo "No valid upstream checksum found for ${asset}" >&2
+            asset_digest="$(jq -er --arg asset "${asset}" '.assets[] | select(.name == $asset) | .digest' "${temporary}/release.json")"
+            if [[ ! "${asset_digest}" =~ ^sha256:([0-9a-fA-F]{64})$ ]]; then
+              echo "No valid upstream SHA-256 release digest found for ${asset}" >&2
               exit 1
             fi
+            expected_archive_sha256="${BASH_REMATCH[1]}"
 
             asset_url="$(jq -er --arg asset "${asset}" '.assets[] | select(.name == $asset) | .browser_download_url' "${temporary}/release.json")"
             archive="${temporary}/${asset}"
@@ -297,7 +294,7 @@ jobs:
           ## Generated evidence
 
           - upstream release metadata resolved from `asg017/sqlite-vec`;
-          - Linux x86_64 and arm64 release archives verified against upstream `checksums.txt` before extraction;
+          - Linux x86_64 and arm64 release archives verified against their upstream GitHub release asset SHA-256 digests before extraction;
           - bundled `vec0.so` SHA-256 values regenerated in the package manifest and verified again locally;
           - `composer ci` passed against the updated runtime payload;
           - the vendored extension loaded through `SqliteVecBinary` and passed `vec_version()`, vec0 create/insert/k-NN/delete smoke checks.
