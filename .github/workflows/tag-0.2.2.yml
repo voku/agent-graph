@@ -1,0 +1,60 @@
+name: Create immutable 0.2.2 tag
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/tag-0.2.2.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify immutable release target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected='04b82bbae4d8b2cae85e118c884142a25b170cbe'
+          marker_target="$(python3 -c 'import json; print(json.load(open(".release/0.2.2.json"))["target_sha"])')"
+          if [[ "$marker_target" != "$expected" ]]; then
+            echo "Release marker target mismatch: expected $expected, got $marker_target" >&2
+            exit 1
+          fi
+
+          git fetch origin 0.2.x:refs/remotes/origin/0.2.x --no-tags
+          branch_target="$(git rev-parse refs/remotes/origin/0.2.x)"
+          if [[ "$branch_target" != "$expected" ]]; then
+            echo "Frozen 0.2.x target mismatch: expected $expected, got $branch_target" >&2
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin refs/tags/0.2.2 >/dev/null 2>&1; then
+            git fetch origin refs/tags/0.2.2:refs/tags/0.2.2 --force
+            existing_target="$(git rev-list -n 1 0.2.2)"
+            if [[ "$existing_target" != "$expected" ]]; then
+              echo "Immutable tag 0.2.2 already exists at $existing_target; refusing to move or recreate it." >&2
+              exit 1
+            fi
+            echo "Immutable tag 0.2.2 already exists at the expected target."
+            exit 0
+          fi
+
+      - name: Create and push annotated tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          target='04b82bbae4d8b2cae85e118c884142a25b170cbe'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a 0.2.2 "$target" -m 'agent-graph 0.2.2'
+          git push origin refs/tags/0.2.2
