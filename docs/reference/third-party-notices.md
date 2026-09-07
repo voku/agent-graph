@@ -5,8 +5,8 @@
 This repository redistributes precompiled `sqlite-vec` loadable SQLite extension binaries from:
 
 - Upstream: `asg017/sqlite-vec`
-- Pinned version: `v0.1.7-alpha.2`
-- Source release: `https://github.com/asg017/sqlite-vec/releases/tag/v0.1.7-alpha.2`
+- Pinned version: `v0.1.9`
+- Source release: `https://github.com/asg017/sqlite-vec/releases/tag/v0.1.9`
 
 The exact redistributed assets and their SHA-256 checksums are recorded in `resources/sqlite-vec/manifest.json`.
 
