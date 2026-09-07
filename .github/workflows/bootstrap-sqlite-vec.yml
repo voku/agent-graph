@@ -102,7 +102,8 @@ jobs:
               "${asset_url}" \
               --output "${archive}"
 
-            printf '%s  %s\n' "${expected_archive_sha256}" "${archive}" | sha256sum --check --strict
+            printf '%s  %s\n' "${expected_archive_sha256}" "${archive}" \
+              | sha256sum --check --strict --status
 
             mkdir -p "${unpacked}"
             tar -xzf "${archive}" -C "${unpacked}"
@@ -208,30 +209,25 @@ jobs:
 
           require 'vendor/autoload.php';
 
-          use PDO;
-          use Pdo\Sqlite;
-          use RuntimeException;
-          use voku\AgentGraph\Sqlite\SqliteVecBinary;
-
-          $path = SqliteVecBinary::resolve();
+          $path = \voku\AgentGraph\Sqlite\SqliteVecBinary::resolve();
           if ($path === null) {
-              throw new RuntimeException('The freshly vendored sqlite-vec binary did not resolve.');
+              throw new \RuntimeException('The freshly vendored sqlite-vec binary did not resolve.');
           }
-          if (!class_exists(Sqlite::class)) {
-              throw new RuntimeException('Pdo\\Sqlite is unavailable on the validation runner.');
+          if (!class_exists(\Pdo\Sqlite::class)) {
+              throw new \RuntimeException('Pdo\\Sqlite is unavailable on the validation runner.');
           }
 
-          $pdo = new Sqlite('sqlite::memory:');
-          $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+          $pdo = new \Pdo\Sqlite('sqlite::memory:');
+          $pdo->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
           $pdo->loadExtension($path);
 
           $actualVersion = $pdo->query('SELECT vec_version()')->fetchColumn();
           $expectedVersion = getenv('TARGET_VERSION');
           if (!is_string($actualVersion) || !is_string($expectedVersion)) {
-              throw new RuntimeException('Unable to read sqlite-vec version evidence.');
+              throw new \RuntimeException('Unable to read sqlite-vec version evidence.');
           }
           if ('v' . ltrim($actualVersion, 'v') !== 'v' . ltrim($expectedVersion, 'v')) {
-              throw new RuntimeException(sprintf(
+              throw new \RuntimeException(sprintf(
                   'sqlite-vec version mismatch: expected %s, got %s.',
                   $expectedVersion,
                   $actualVersion,
@@ -245,13 +241,13 @@ jobs:
               "SELECT rowid FROM vec_smoke WHERE embedding MATCH '[1.0, 0.0]' AND k = 1",
           )->fetchColumn();
           if ((int) $nearest !== 1) {
-              throw new RuntimeException('sqlite-vec nearest-neighbour smoke test returned the wrong row.');
+              throw new \RuntimeException('sqlite-vec nearest-neighbour smoke test returned the wrong row.');
           }
 
           $pdo->exec('DELETE FROM vec_smoke WHERE rowid = 2');
           $remaining = $pdo->query('SELECT COUNT(*) FROM vec_smoke')->fetchColumn();
           if ((int) $remaining !== 1) {
-              throw new RuntimeException('sqlite-vec delete smoke test failed.');
+              throw new \RuntimeException('sqlite-vec delete smoke test failed.');
           }
 
           printf("sqlite-vec %s load/create/insert/query/delete smoke test passed.\n", $actualVersion);
