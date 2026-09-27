@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace voku\AgentGraph\Tests\Sqlite;
 
+use PDO;
 use PDOException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -180,6 +181,25 @@ final class GraphStoreTest extends TestCase
 
         self::assertFileDoesNotExist($databaseFile);
         self::assertDirectoryDoesNotExist($directory);
+    }
+
+    public function testReadOnlyStoreRejectsExistingInvalidSchemaOnOpen(): void
+    {
+        $pdo = new PDO('sqlite:' . $this->databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $pdo->exec('CREATE TABLE unrelated (id INTEGER PRIMARY KEY)');
+        unset($pdo);
+
+        $before = hash_file('sha256', $this->databaseFile);
+        self::assertIsString($before);
+
+        try {
+            GraphStore::openReadOnly($this->databaseFile);
+            self::fail('Opening an invalid graph schema read-only must fail.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('missing required table', $exception->getMessage());
+        }
+
+        self::assertSame($before, hash_file('sha256', $this->databaseFile));
     }
 
     public function testStreamingEmptyGraphRequiresExplicitOptIn(): void
