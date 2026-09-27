@@ -21,16 +21,50 @@ final class SqliteRelationStore
 
     private PDO $pdo;
 
-    public function __construct(private readonly string $databaseFile)
-    {
-        $directory = dirname($databaseFile);
-        if (!is_dir($directory) && !mkdir($directory, 0o775, true) && !is_dir($directory)) {
-            throw new RuntimeException('Unable to create graph index directory: ' . $directory);
+    public function __construct(
+        private readonly string $databaseFile,
+        private readonly bool $readOnly = false,
+    ) {
+        if ($this->readOnly && !is_file($this->databaseFile)) {
+            throw new RuntimeException('Graph store does not exist for read-only access: ' . $this->databaseFile);
         }
 
-        $this->pdo = new PDO('sqlite:' . $databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if (!$this->readOnly) {
+            $directory = dirname($databaseFile);
+            if (!is_dir($directory) && !mkdir($directory, 0o775, true) && !is_dir($directory)) {
+                throw new RuntimeException('Unable to create graph index directory: ' . $directory);
+            }
+        }
+
+        $this->pdo = $this->openConnection($this->readOnly);
         $this->pdo->exec('PRAGMA foreign_keys = ON');
-        $this->migrate();
+
+        if (!$this->readOnly) {
+            $this->migrate();
+        }
+    }
+
+    private function openConnection(bool $readOnly): PDO
+    {
+        $dsn = 'sqlite:' . $this->databaseFile;
+        $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+
+        if (!$readOnly) {
+            return new PDO($dsn, null, null, $options);
+        }
+
+        if (class_exists('Pdo\\Sqlite')) {
+            $options[\Pdo\Sqlite::ATTR_OPEN_FLAGS] = \Pdo\Sqlite::OPEN_READONLY;
+
+            return new \Pdo\Sqlite($dsn, null, null, $options);
+        }
+
+        if (!defined('PDO::SQLITE_ATTR_OPEN_FLAGS') || !defined('PDO::SQLITE_OPEN_READONLY')) {
+            throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
+        }
+        $options[constant('PDO::SQLITE_ATTR_OPEN_FLAGS')] = constant('PDO::SQLITE_OPEN_READONLY');
+
+        return new PDO($dsn, null, null, $options);
     }
 
     public function replace(GraphProjection $projection, bool $allowEmpty = false): void
