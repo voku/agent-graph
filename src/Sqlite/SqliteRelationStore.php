@@ -21,16 +21,47 @@ final class SqliteRelationStore
 
     private PDO $pdo;
 
-    public function __construct(private readonly string $databaseFile)
-    {
-        $directory = dirname($databaseFile);
-        if (!is_dir($directory) && !mkdir($directory, 0o775, true) && !is_dir($directory)) {
-            throw new RuntimeException('Unable to create graph index directory: ' . $directory);
+    public function __construct(
+        private readonly string $databaseFile,
+        private readonly bool $readOnly = false,
+    ) {
+        if ($this->readOnly && !is_file($this->databaseFile)) {
+            throw new RuntimeException('Graph store does not exist for read-only access: ' . $this->databaseFile);
         }
 
-        $this->pdo = new PDO('sqlite:' . $databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if (!$this->readOnly) {
+            $directory = dirname($databaseFile);
+            if (!is_dir($directory) && !mkdir($directory, 0o775, true) && !is_dir($directory)) {
+                throw new RuntimeException('Unable to create graph index directory: ' . $directory);
+            }
+        }
+
+        $this->pdo = $this->openConnection($this->readOnly);
         $this->pdo->exec('PRAGMA foreign_keys = ON');
-        $this->migrate();
+
+        if ($this->readOnly) {
+            $this->assertSchemaCompatible();
+        } else {
+            $this->migrate();
+        }
+    }
+
+    private function openConnection(bool $readOnly): PDO
+    {
+        $dsn = 'sqlite:' . $this->databaseFile;
+        $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+
+        if (!$readOnly) {
+            return new PDO($dsn, null, null, $options);
+        }
+
+        if (!defined('PDO::SQLITE_ATTR_OPEN_FLAGS') || !defined('PDO::SQLITE_OPEN_READONLY')) {
+            throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
+        }
+
+        $options[(int) constant('PDO::SQLITE_ATTR_OPEN_FLAGS')] = (int) constant('PDO::SQLITE_OPEN_READONLY');
+
+        return new PDO($dsn, null, null, $options);
     }
 
     public function replace(GraphProjection $projection, bool $allowEmpty = false): void
@@ -189,10 +220,6 @@ final class SqliteRelationStore
         $targetIds = [];
 
         while (($row = $statement->fetch(PDO::FETCH_ASSOC)) !== false) {
-            if (!is_array($row)) {
-                throw new RuntimeException('SQLite graph relation row is not an array.');
-            }
-
             $currentRelationId = $this->stringColumn($row['relation_id'] ?? null, 'relation_id');
             if ($relationId !== null && $currentRelationId !== $relationId) {
                 yield new GraphRelation($relationId, $sourceId, $kind, $targetIds);
@@ -326,6 +353,16 @@ final class SqliteRelationStore
 
     private function assertSchemaCompatible(): void
     {
+        foreach (['graph_meta', 'graph_relations', 'graph_relation_targets'] as $table) {
+            $statement = $this->pdo->prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table",
+            );
+            $statement->execute(['table' => $table]);
+            if ($statement->fetchColumn() === false) {
+                throw new RuntimeException('Graph store schema is missing required table: ' . $table);
+            }
+        }
+
         $schemaVersion = $this->meta('schema_version');
         if ($schemaVersion !== self::SCHEMA_VERSION) {
             throw new RuntimeException(sprintf(

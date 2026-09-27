@@ -15,9 +15,31 @@ final class SqliteIncomingRelationQuery
     private PDO $pdo;
     private bool $readable = false;
 
-    public function __construct(string $databaseFile)
+    public function __construct(string $databaseFile, bool $readOnly = false)
     {
-        $this->pdo = new PDO('sqlite:' . $databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        if ($readOnly && !is_file($databaseFile)) {
+            throw new RuntimeException('Graph store does not exist for read-only access: ' . $databaseFile);
+        }
+
+        $this->pdo = $this->openConnection($databaseFile, $readOnly);
+    }
+
+    private function openConnection(string $databaseFile, bool $readOnly): PDO
+    {
+        $dsn = 'sqlite:' . $databaseFile;
+        $options = [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION];
+
+        if (!$readOnly) {
+            return new PDO($dsn, null, null, $options);
+        }
+
+        if (!defined('PDO::SQLITE_ATTR_OPEN_FLAGS') || !defined('PDO::SQLITE_OPEN_READONLY')) {
+            throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
+        }
+
+        $options[(int) constant('PDO::SQLITE_ATTR_OPEN_FLAGS')] = (int) constant('PDO::SQLITE_OPEN_READONLY');
+
+        return new PDO($dsn, null, null, $options);
     }
 
     /** @return list<GraphRelation> */

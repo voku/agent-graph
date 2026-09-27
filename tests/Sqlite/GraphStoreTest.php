@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace voku\AgentGraph\Tests\Sqlite;
 
+use PDO;
+use PDOException;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 use voku\AgentGraph\Graph\GraphRelation;
 use voku\AgentGraph\Graph\GraphValidationException;
 use voku\AgentGraph\Graph\TraversalDirection;
@@ -115,6 +118,88 @@ final class GraphStoreTest extends TestCase
 
         self::assertSame(['A', 'C', 'D'], $result->nodeIds);
         self::assertSame(['r1', 'r2', 'r3'], $this->ids($result->relations));
+    }
+
+    public function testReadOnlyStoreSupportsQueriesAndTraversalWithoutMutation(): void
+    {
+        $writable = new GraphStore($this->databaseFile);
+        $writable->replace([
+            new GraphRelation('r1', 'A', 'calls', ['B']),
+            new GraphRelation('r2', 'C', 'calls', ['B']),
+            new GraphRelation('r3', 'B', 'calls', ['D']),
+        ], 'map:readonly', 'sha256:readonly');
+        unset($writable);
+
+        $before = hash_file('sha256', $this->databaseFile);
+        self::assertIsString($before);
+
+        $store = GraphStore::openReadOnly($this->databaseFile);
+
+        self::assertSame('map:readonly', $store->sourceRevision());
+        self::assertSame('sha256:readonly', $store->sourceFingerprint());
+        self::assertSame(['r1', 'r2'], $this->ids($store->incoming('B', 'calls')));
+        self::assertSame(['r3'], $this->ids($store->outgoing('B', 'calls')));
+
+        $traversal = $store->traverse(
+            'B',
+            TraversalDirection::INCOMING,
+            maximumDepth: 2,
+            maximumNodes: 10,
+            kind: 'calls',
+        );
+        self::assertSame(['A', 'C'], $traversal->nodeIds);
+        self::assertSame($before, hash_file('sha256', $this->databaseFile));
+    }
+
+    public function testReadOnlyStoreRejectsReplacement(): void
+    {
+        $writable = new GraphStore($this->databaseFile);
+        $writable->replace([
+            new GraphRelation('r1', 'A', 'calls', ['B']),
+        ], 'map:readonly', 'sha256:readonly');
+        unset($writable);
+
+        $store = GraphStore::openReadOnly($this->databaseFile);
+
+        $this->expectException(PDOException::class);
+        $store->replace([
+            new GraphRelation('r2', 'B', 'calls', ['C']),
+        ], 'map:changed', 'sha256:changed');
+    }
+
+    public function testReadOnlyStoreDoesNotCreateMissingDatabaseOrDirectory(): void
+    {
+        $directory = sys_get_temp_dir() . '/agent-graph-readonly-missing-' . bin2hex(random_bytes(8));
+        $databaseFile = $directory . '/graph.sqlite';
+
+        try {
+            GraphStore::openReadOnly($databaseFile);
+            self::fail('Opening a missing graph store read-only must fail.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('does not exist for read-only access', $exception->getMessage());
+        }
+
+        self::assertFileDoesNotExist($databaseFile);
+        self::assertDirectoryDoesNotExist($directory);
+    }
+
+    public function testReadOnlyStoreRejectsExistingInvalidSchemaOnOpen(): void
+    {
+        $pdo = new PDO('sqlite:' . $this->databaseFile, null, null, [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+        $pdo->exec('CREATE TABLE unrelated (id INTEGER PRIMARY KEY)');
+        unset($pdo);
+
+        $before = hash_file('sha256', $this->databaseFile);
+        self::assertIsString($before);
+
+        try {
+            GraphStore::openReadOnly($this->databaseFile);
+            self::fail('Opening an invalid graph schema read-only must fail.');
+        } catch (RuntimeException $exception) {
+            self::assertStringContainsString('missing required table', $exception->getMessage());
+        }
+
+        self::assertSame($before, hash_file('sha256', $this->databaseFile));
     }
 
     public function testStreamingEmptyGraphRequiresExplicitOptIn(): void

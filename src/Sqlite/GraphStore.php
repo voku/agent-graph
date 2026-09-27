@@ -15,10 +15,15 @@ final class GraphStore
     private SqliteRelationStore $relations;
     private SqliteIncomingRelationQuery $incomingQuery;
 
-    public function __construct(string $databaseFile)
+    public function __construct(string $databaseFile, bool $readOnly = false)
     {
-        $this->relations = new SqliteRelationStore($databaseFile);
-        $this->incomingQuery = new SqliteIncomingRelationQuery($databaseFile);
+        $this->relations = new SqliteRelationStore($databaseFile, $readOnly);
+        $this->incomingQuery = new SqliteIncomingRelationQuery($databaseFile, $readOnly);
+    }
+
+    public static function openReadOnly(string $databaseFile): self
+    {
+        return new self($databaseFile, true);
     }
 
     /**
