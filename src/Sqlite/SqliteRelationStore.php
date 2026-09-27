@@ -39,7 +39,9 @@ final class SqliteRelationStore
         $this->pdo = $this->openConnection($this->readOnly);
         $this->pdo->exec('PRAGMA foreign_keys = ON');
 
-        if (!$this->readOnly) {
+        if ($this->readOnly) {
+            $this->assertSchemaCompatible();
+        } else {
             $this->migrate();
         }
     }
@@ -351,6 +353,16 @@ final class SqliteRelationStore
 
     private function assertSchemaCompatible(): void
     {
+        foreach (['graph_meta', 'graph_relations', 'graph_relation_targets'] as $table) {
+            $statement = $this->pdo->prepare(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table",
+            );
+            $statement->execute(['table' => $table]);
+            if ($statement->fetchColumn() === false) {
+                throw new RuntimeException('Graph store schema is missing required table: ' . $table);
+            }
+        }
+
         $schemaVersion = $this->meta('schema_version');
         if ($schemaVersion !== self::SCHEMA_VERSION) {
             throw new RuntimeException(sprintf(
