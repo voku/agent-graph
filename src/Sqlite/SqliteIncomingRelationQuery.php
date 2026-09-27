@@ -33,16 +33,16 @@ final class SqliteIncomingRelationQuery
             return new PDO($dsn, null, null, $options);
         }
 
-        if (class_exists('Pdo\\Sqlite')) {
-            $options[\Pdo\Sqlite::ATTR_OPEN_FLAGS] = \Pdo\Sqlite::OPEN_READONLY;
-
-            return new \Pdo\Sqlite($dsn, null, null, $options);
-        }
-
         if (!defined('PDO::SQLITE_ATTR_OPEN_FLAGS') || !defined('PDO::SQLITE_OPEN_READONLY')) {
             throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
         }
-        $options[constant('PDO::SQLITE_ATTR_OPEN_FLAGS')] = constant('PDO::SQLITE_OPEN_READONLY');
+
+        $attribute = constant('PDO::SQLITE_ATTR_OPEN_FLAGS');
+        $flag = constant('PDO::SQLITE_OPEN_READONLY');
+        if (!is_int($attribute) || !is_int($flag)) {
+            throw new RuntimeException('PDO SQLite read-only open flags are invalid.');
+        }
+        $options[$attribute] = $flag;
 
         return new PDO($dsn, null, null, $options);
     }
