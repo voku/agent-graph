@@ -57,12 +57,7 @@ final class SqliteRelationStore
             throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
         }
 
-        $attribute = constant('PDO::SQLITE_ATTR_OPEN_FLAGS');
-        $flag = constant('PDO::SQLITE_OPEN_READONLY');
-        if (!is_int($attribute) || !is_int($flag)) {
-            throw new RuntimeException('PDO SQLite read-only open flags are invalid.');
-        }
-        $options[$attribute] = $flag;
+        $options[(int) constant('PDO::SQLITE_ATTR_OPEN_FLAGS')] = (int) constant('PDO::SQLITE_OPEN_READONLY');
 
         return new PDO($dsn, null, null, $options);
     }
