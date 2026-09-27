@@ -223,10 +223,6 @@ final class SqliteRelationStore
         $targetIds = [];
 
         while (($row = $statement->fetch(PDO::FETCH_ASSOC)) !== false) {
-            if (!is_array($row)) {
-                throw new RuntimeException('SQLite graph relation row is not an array.');
-            }
-
             $currentRelationId = $this->stringColumn($row['relation_id'] ?? null, 'relation_id');
             if ($relationId !== null && $currentRelationId !== $relationId) {
                 yield new GraphRelation($relationId, $sourceId, $kind, $targetIds);
