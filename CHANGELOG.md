@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.3
+
+- Add `GraphStore::openReadOnly()` for deterministic graph queries and bounded traversal without creating directories, migrating schemas, or otherwise mutating persisted graph state.
+- Enforce SQLite read-only access for both relation and indexed incoming-query connections; reject writes, missing databases, and invalid/missing graph schemas at open time.
+- Add regression coverage across PHP 8.2-8.5 for read-only queries/traversal, unchanged database bytes, rejected replacement, missing databases, and invalid existing schemas.
+
 ## 0.2.2
 
 - Update the bundled sqlite-vec runtime from `v0.1.7-alpha.2` to stable `v0.1.9` for Linux GNU x86_64 and arm64 while preserving the existing `SqliteVecBinary` API and checksum-verified resolution contract.
