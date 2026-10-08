@@ -39,6 +39,12 @@ SQLite rows are an internal normalization. The public relation model stays group
 
 Ordinary relation storage stays a single SQLite artifact by default. The package does not force WAL or synchronous tuning without measured evidence. The store is independent from `sqlite-vec`; relation indexing works without vector support.
 
+### Upgrading from 0.2.x to 0.3.0
+
+The derived relation database uses SQLite graph schema version 2. A v1 database from `agent-graph` 0.2.x cannot be opened using `GraphStore::openReadOnly()` in 0.3.0. Read-only access fails with a schema-version error and **never** changes the file.
+
+Rebuild the derived graph using the owning tool (for example, rebuild the `agent-map` index), or open the existing graph **writable** once before reading it read-only; a writable open migrates v1 to v2 transactionally. Preserve the canonical source artifacts so the owner can regenerate derived data. Since this is a 0.x minor upgrade, downstream Composer constraints such as `^0.2.3` require an explicit bump to `^0.3.0`.
+
 ## Performance measurements
 
 `scripts/benchmark.php` builds a deterministic synthetic graph (default 200k relations with high fan-in hubs) and reports median timings plus result checksums. `scripts/compare-benchmark.sh [base-ref]` runs it against a git ref and the working tree and fails if the checksums differ, so speed-ups cannot silently change query results. Compare several runs; shared machines are noisy. Extra indexes and PRAGMA tuning were measured and are intentionally not applied.
