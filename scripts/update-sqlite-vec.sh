@@ -65,31 +65,38 @@ x86_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-x86_64.t
 arm64_asset="$(jq -er '[.assets[].name | select(endswith("-loadable-linux-aarch64.tar.gz"))][0]' "${temporary}/release.json")"
 
 vendor_binary() {
-  local platform="$1" asset="$2" digest url archive unpacked binary destination
+  local platform="$1" asset="$2" digest url archive unpacked binary destination expected_archive_sha256
   digest="$(jq -er --arg a "${asset}" '.assets[] | select(.name == $a) | .digest' "${temporary}/release.json")"
   if [[ ! "${digest}" =~ ^sha256:([0-9a-fA-F]{64})$ ]]; then
     echo "No valid upstream SHA-256 release digest found for ${asset}" >&2
     exit 1
   fi
-  url="$(jq -er --arg a "${asset}" '.assets[] | select(.name == $a) | .browser_download_url' "${temporary}/release.json")"
+  expected_archive_sha256="${BASH_REMATCH[1]}"
+  url="$(jq -er --arg a "${asset}" '.assets[] | select(.name == $a) | .browser_download_url' "${temporary}/release.json")" || return 1
   archive="${temporary}/${asset}"
   unpacked="${temporary}/unpacked-${platform}"
   destination="resources/sqlite-vec/${platform}/vec0.so"
 
-  curl --fail --location --silent --show-error "${url}" --output "${archive}"
-  printf '%s  %s\n' "${BASH_REMATCH[1]}" "${archive}" | sha256sum --check --strict --status
-
-  mkdir -p "${unpacked}"
-  tar -xzf "${archive}" -C "${unpacked}"
-  binary="$(find "${unpacked}" -type f -name 'vec0.so' -print -quit)"
-  test -n "${binary}"
-  mkdir -p "$(dirname "${destination}")"
-  install -m 0644 "${binary}" "${destination}"
-  sha256sum "${destination}" | awk '{ print $1 }'
+  # Explicit checks: command substitutions do not inherit errexit by default.
+  curl --fail --location --silent --show-error "${url}" --output "${archive}" || return 1
+  if ! printf '%s  %s\n' "${expected_archive_sha256}" "${archive}" | sha256sum --check --strict --status; then
+    echo "SHA-256 mismatch for ${asset}" >&2
+    return 1
+  fi
+  mkdir -p "${unpacked}" || return 1
+  tar -xzf "${archive}" -C "${unpacked}" || return 1
+  binary="$(find "${unpacked}" -type f -name 'vec0.so' -print -quit)" || return 1
+  if [[ -z "${binary}" ]]; then
+    echo "vec0.so missing in ${asset}" >&2
+    return 1
+  fi
+  mkdir -p "$(dirname "${destination}")" || return 1
+  install -m 0644 "${binary}" "${destination}" || return 1
+  sha256sum "${destination}" | awk '{ print $1 }' || return 1
 }
 
-x86_sha256="$(vendor_binary 'linux-gnu-x86_64' "${x86_asset}")"
-arm64_sha256="$(vendor_binary 'linux-gnu-arm64' "${arm64_asset}")"
+x86_sha256="$(vendor_binary 'linux-gnu-x86_64' "${x86_asset}")" || exit 1
+arm64_sha256="$(vendor_binary 'linux-gnu-arm64' "${arm64_asset}")" || exit 1
 
 jq \
   --arg version "${version}" --arg source "${source_url}" \

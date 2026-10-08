@@ -93,12 +93,23 @@ $record('traverse in d2 (mid)', $median(static fn () => $graph->traverse($mid, T
 $record('traverse out d3', $median(static fn () => $graph->traverse($mid, TraversalDirection::OUTGOING, 3, 100)));
 
 $checksums = [
-    'incoming hub' => md5(serialize($graph->incoming($hub))),
-    'outgoing mid' => md5(serialize($graph->outgoing($mid))),
-    'neighbours hub' => md5(serialize($graph->neighbours($hub))),
-    'traverse in hub' => md5(serialize($graph->traverse($hub, TraversalDirection::INCOMING, 2, 100))),
-    'traverse out mid' => md5(serialize($graph->traverse($mid, TraversalDirection::OUTGOING, 3, 100))),
+    'incoming hub' => hash('sha256', serialize($graph->incoming($hub))),
+    'incoming mid' => hash('sha256', serialize($graph->incoming($mid))),
+    'outgoing mid' => hash('sha256', serialize($graph->outgoing($mid))),
+    'outgoing mid kind' => hash('sha256', serialize($graph->outgoing($mid, 'calls'))),
+    'neighbours hub' => hash('sha256', serialize($graph->neighbours($hub))),
+    'neighbours mid' => hash('sha256', serialize($graph->neighbours($mid))),
+    'traverse in hub' => hash('sha256', serialize($graph->traverse($hub, TraversalDirection::INCOMING, 2, 100))),
+    'traverse in mid' => hash('sha256', serialize($graph->traverse($mid, TraversalDirection::INCOMING, 2, 100))),
+    'traverse out mid' => hash('sha256', serialize($graph->traverse($mid, TraversalDirection::OUTGOING, 3, 100))),
 ];
+if (str_contains((string) (new ReflectionMethod(GraphStore::class, 'traverse')), 'maximumRelations')) {
+    // Head-only until the old revision supports capped traversal.
+    $checksums['traverse in hub cap=200'] = hash(
+        'sha256',
+        serialize($graph->traverse($hub, TraversalDirection::INCOMING, 2, 100, maximumRelations: 200)),
+    );
+}
 
 if ($json) {
     echo json_encode(['timings_ms' => $results, 'checksums' => $checksums], JSON_PRETTY_PRINT), "\n";

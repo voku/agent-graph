@@ -120,6 +120,7 @@ final class GraphStore
                 if (!isset($seenRelations[$relation->id])) {
                     if ($maximumRelations !== null && count($relations) >= $maximumRelations) {
                         $truncated = true;
+                        // Excluded relations must not contribute traversal nodes.
                         continue;
                     }
                     $seenRelations[$relation->id] = true;

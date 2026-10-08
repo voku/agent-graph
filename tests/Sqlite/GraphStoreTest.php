@@ -143,6 +143,27 @@ final class GraphStoreTest extends TestCase
 
         self::assertSame(['r1'], $this->ids($result->relations));
         self::assertSame(['x', 'y', 'z'], $result->relations[0]->targetIds);
+        self::assertSame(['x', 'y', 'z'], $result->nodeIds);
+        self::assertTrue($result->truncated);
+    }
+
+    public function testCappedIncomingTraversalExcludesNodesFromOmittedRelations(): void
+    {
+        $store = new GraphStore($this->databaseFile);
+        $store->replace([
+            new GraphRelation('r1', 'A', 'calls', ['hub']),
+            new GraphRelation('r2', 'B', 'calls', ['hub']),
+        ], 'map:cap', 'sha256:cap');
+
+        $result = $store->traverse(
+            'hub',
+            TraversalDirection::INCOMING,
+            maximumDepth: 1,
+            maximumRelations: 1,
+        );
+
+        self::assertSame(['r1'], $this->ids($result->relations));
+        self::assertSame(['A'], $result->nodeIds);
         self::assertTrue($result->truncated);
     }
 
