@@ -22,3 +22,11 @@ jobs:
           coverage: none
       - run: composer install --no-interaction --prefer-dist
       - run: composer ci
+      - run: bash -n scripts/compare-benchmark.sh scripts/update-sqlite-vec.sh
+      - name: Benchmark parity against released 0.2.3 (PHP 8.4)
+        if: matrix.php == '8.4'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin refs/tags/0.2.3:refs/tags/0.2.3
+          ./scripts/compare-benchmark.sh 0.2.3 -- --relations=500 --nodes=100 --runs=3
