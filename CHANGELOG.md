@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **Schema version 2.** Relations and their targets are now keyed by the integer `relation_position` instead of the text relation id, and the targets table is `WITHOUT ROWID`. On a 200k-relation graph this shrinks the file by about 40% (51.7 → 30.9 MB) and speeds up high-fan-in lookups, because rows are already clustered in canonical order. Query results, ordering and the public API are unchanged.
+- A writable open (`new GraphStore($file)`, `SqliteRelationStore`) upgrades a version 1 file in place inside one transaction (verified target count, then `VACUUM`); the 200k-relation graph took about 4 s. Read-only opens (`GraphStore::openReadOnly()`) of a version 1 file keep failing closed with the schema-version error and never modify the file, so open it writable once, or rebuild it, to upgrade.
+
+- Use a single SQLite connection per `GraphStore` and cache the schema/projection readiness check (invalidated on replacement) instead of re-validating on every `incoming()`/`outgoing()` call. `SqliteIncomingRelationQuery` is removed; its indexed `target_id` lookup now lives in `SqliteRelationStore::incoming()`.
+- Answer `GraphStore::neighbours()` with one deduplicating SQL `UNION` over the indexed lookups instead of materializing full relations, and group relation rows while streaming.
+- Roughly halve full-rebuild time by dropping the two secondary indexes inside the replacement transaction and rebuilding them once after the load (rolled back together with the data on failure).
+- Add optional `maximumRelations` to `GraphStore::traverse()` (and `$limit` to `SqliteRelationStore::incoming()`/`outgoing()`) to bound work on high-degree nodes; hitting the cap sets `truncated`. Default behaviour is unchanged.
+- Add `scripts/benchmark.php` and `scripts/compare-benchmark.sh` for repeatable before/after measurements with result checksums, and `scripts/update-sqlite-vec.sh` for sqlite-vec updates.
+
 ## 0.2.3
 
 - Add `GraphStore::openReadOnly()` for deterministic graph queries and bounded traversal without creating directories, migrating schemas, or otherwise mutating persisted graph state.

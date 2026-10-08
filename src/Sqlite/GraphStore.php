@@ -13,12 +13,10 @@ use voku\AgentGraph\Graph\TraversalDirection;
 final class GraphStore
 {
     private SqliteRelationStore $relations;
-    private SqliteIncomingRelationQuery $incomingQuery;
 
     public function __construct(string $databaseFile, bool $readOnly = false)
     {
         $this->relations = new SqliteRelationStore($databaseFile, $readOnly);
-        $this->incomingQuery = new SqliteIncomingRelationQuery($databaseFile, $readOnly);
     }
 
     public static function openReadOnly(string $databaseFile): self
@@ -55,7 +53,7 @@ final class GraphStore
     /** @return list<GraphRelation> */
     public function incoming(string $targetId, ?string $kind = null): array
     {
-        return $this->incomingQuery->incoming($targetId, $kind);
+        return $this->relations->incoming($targetId, $kind);
     }
 
     /** @return list<GraphRelation> */
@@ -73,24 +71,7 @@ final class GraphStore
     /** @return list<string> */
     public function neighbours(string $nodeId, ?string $kind = null): array
     {
-        $neighbours = [];
-        foreach ($this->incoming($nodeId, $kind) as $relation) {
-            if ($relation->sourceId !== $nodeId) {
-                $neighbours[$relation->sourceId] = true;
-            }
-        }
-        foreach ($this->outgoing($nodeId, $kind) as $relation) {
-            foreach ($relation->targetIds as $targetId) {
-                if ($targetId !== $nodeId) {
-                    $neighbours[$targetId] = true;
-                }
-            }
-        }
-
-        $ids = array_keys($neighbours);
-        sort($ids, SORT_STRING);
-
-        return $ids;
+        return $this->relations->neighbourIds($nodeId, $kind);
     }
 
     public function traverse(
@@ -99,12 +80,16 @@ final class GraphStore
         int $maximumDepth = 2,
         int $maximumNodes = 100,
         ?string $kind = null,
+        ?int $maximumRelations = null,
     ): GraphTraversalResult {
         if ($maximumDepth < 1) {
             throw new InvalidArgumentException('Graph traversal depth must be at least 1.');
         }
         if ($maximumNodes < 1) {
             throw new InvalidArgumentException('Graph traversal node limit must be positive.');
+        }
+        if ($maximumRelations !== null && $maximumRelations < 1) {
+            throw new InvalidArgumentException('Graph traversal relation limit must be positive.');
         }
 
         /** @var SplQueue<array{id: string, depth: int}> $queue */
@@ -124,12 +109,20 @@ final class GraphStore
                 continue;
             }
 
+            // Fetch one more than the cap so truncation of a high-degree node is detectable
+            // without loading its whole relation list.
+            $fetchLimit = $maximumRelations === null ? null : $maximumRelations + 1;
             $currentRelations = $direction === TraversalDirection::INCOMING
-                ? $this->incoming($current['id'], $kind)
-                : $this->outgoing($current['id'], $kind);
+                ? $this->relations->incoming($current['id'], $kind, $fetchLimit)
+                : $this->relations->outgoing($current['id'], $kind, $fetchLimit);
 
             foreach ($currentRelations as $relation) {
                 if (!isset($seenRelations[$relation->id])) {
+                    if ($maximumRelations !== null && count($relations) >= $maximumRelations) {
+                        $truncated = true;
+                        // Excluded relations must not contribute traversal nodes.
+                        continue;
+                    }
                     $seenRelations[$relation->id] = true;
                     $relations[] = $relation;
                 }
