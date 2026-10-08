@@ -39,6 +39,10 @@ SQLite rows are an internal normalization. The public relation model stays group
 
 Ordinary relation storage stays a single SQLite artifact by default. The package does not force WAL or synchronous tuning without measured evidence. The store is independent from `sqlite-vec`; relation indexing works without vector support.
 
+## Performance measurements
+
+`scripts/benchmark.php` builds a deterministic synthetic graph (default 200k relations with high fan-in hubs) and reports median timings plus result checksums. `scripts/compare-benchmark.sh [base-ref]` runs it against a git ref and the working tree and fails if the checksums differ, so speed-ups cannot silently change query results. Compare several runs; shared machines are noisy. Extra indexes and PRAGMA tuning were measured and are intentionally not applied.
+
 ## sqlite-vec runtime
 
 `agent-graph` ships the pinned `sqlite-vec` loadable SQLite extension used by graph/search consumers on the Linux platforms we actually support:

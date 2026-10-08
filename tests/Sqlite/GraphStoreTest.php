@@ -6,6 +6,7 @@ namespace voku\AgentGraph\Tests\Sqlite;
 
 use PDO;
 use PDOException;
+use InvalidArgumentException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use voku\AgentGraph\Graph\GraphRelation;
@@ -103,6 +104,46 @@ final class GraphStoreTest extends TestCase
         $limited = $store->traverse('A', TraversalDirection::OUTGOING, maximumDepth: 3, maximumNodes: 2, kind: 'calls');
         self::assertSame(['B', 'C'], $limited->nodeIds);
         self::assertTrue($limited->truncated);
+    }
+
+    public function testTraversalRelationLimitBoundsHighDegreeNodesAndReportsTruncation(): void
+    {
+        $store = new GraphStore($this->databaseFile);
+        $relations = [];
+        for ($i = 1; $i <= 50; ++$i) {
+            $relations[] = new GraphRelation('r' . $i, 'S' . $i, 'calls', ['hub']);
+        }
+        $store->replace($relations, 'map:hub', 'sha256:hub');
+
+        $limited = $store->traverse('hub', TraversalDirection::INCOMING, maximumDepth: 1, maximumNodes: 100, maximumRelations: 3);
+        self::assertSame(['r1', 'r2', 'r3'], $this->ids($limited->relations));
+        self::assertSame(['S1', 'S2', 'S3'], $limited->nodeIds);
+        self::assertTrue($limited->truncated);
+
+        $exact = $store->traverse('hub', TraversalDirection::INCOMING, maximumDepth: 1, maximumNodes: 100, maximumRelations: 50);
+        self::assertCount(50, $exact->relations);
+        self::assertFalse($exact->truncated);
+
+        $unbounded = $store->traverse('hub', TraversalDirection::INCOMING, maximumDepth: 1, maximumNodes: 100);
+        self::assertCount(50, $unbounded->relations);
+
+        $this->expectException(InvalidArgumentException::class);
+        $store->traverse('hub', TraversalDirection::INCOMING, maximumRelations: 0);
+    }
+
+    public function testRelationLimitKeepsMultiTargetRelationsIntact(): void
+    {
+        $store = new GraphStore($this->databaseFile);
+        $store->replace([
+            new GraphRelation('r1', 'A', 'calls', ['x', 'y', 'z']),
+            new GraphRelation('r2', 'A', 'calls', ['x']),
+        ], 'map:multi', 'sha256:multi');
+
+        $result = $store->traverse('A', TraversalDirection::OUTGOING, maximumDepth: 1, maximumRelations: 1);
+
+        self::assertSame(['r1'], $this->ids($result->relations));
+        self::assertSame(['x', 'y', 'z'], $result->relations[0]->targetIds);
+        self::assertTrue($result->truncated);
     }
 
     public function testIncomingTraversalWalksSources(): void
