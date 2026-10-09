@@ -174,6 +174,23 @@ final class SqliteRelationStoreTest extends TestCase
         self::assertSame($before, hash_file('sha256', $this->databaseFile));
     }
 
+    public function testRejectedReadOnlyOpenDoesNotLockOutTheOwnerUpgrade(): void
+    {
+        $this->createVersionOneDatabase();
+
+        try {
+            new SqliteRelationStore($this->databaseFile, true);
+            self::fail('Expected read-only open of a version 1 schema to fail closed.');
+        } catch (RuntimeException $exception) {
+            // The caught exception stays in scope on purpose: the rejected connection must already be released.
+            self::assertStringContainsString('schema version is incompatible', $exception->getMessage());
+        }
+
+        $upgraded = new SqliteRelationStore($this->databaseFile);
+
+        self::assertNotNull($upgraded->sourceRevision());
+    }
+
     private function createVersionOneDatabase(): void
     {
         $pdo = new \PDO('sqlite:' . $this->databaseFile, null, null, [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]);

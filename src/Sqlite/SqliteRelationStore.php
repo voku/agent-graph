@@ -514,7 +514,11 @@ final class SqliteRelationStore
                 "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = :table",
             );
             $statement->execute(['table' => $table]);
-            if ($statement->fetchColumn() === false) {
+            $present = $statement->fetchColumn() !== false;
+            // Release the statement before any throw: PHP keeps the SQLite connection (and its read lock) alive
+            // when an exception unwinds past a statement with an unfinished cursor.
+            unset($statement);
+            if (!$present) {
                 throw new RuntimeException('Graph store schema is missing required table: ' . $table);
             }
         }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Fix: a rejected read-only open (for example of a version 1 file) no longer keeps its SQLite connection and read lock alive through the thrown exception, which made the owner's subsequent writable upgrade fail with `database is locked`. The schema probe releases its statement before throwing.
+
 ## 0.3.0
 
 - **Schema version 2.** Relations and their targets are now keyed by the integer `relation_position` instead of the text relation id, and the targets table is `WITHOUT ROWID`. On a 200k-relation graph this shrinks the file by about 40% (51.7 → 30.9 MB) and speeds up high-fan-in lookups, because rows are already clustered in canonical order. Query results, ordering and the public API are unchanged.
