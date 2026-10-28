@@ -47,7 +47,9 @@ final class GuardedProvenanceTest extends TestCase
 
         $before = array_map(static fn (GraphRelation $relation): array => $relation->toArray(), iterator_to_array($store->relations(), false));
         $db = new PDO('sqlite:' . $this->databaseFile);
-        $digest = $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'")->fetchColumn();
+        $digestQuery = $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'");
+        self::assertInstanceOf(\PDOStatement::class, $digestQuery);
+        $digest = $digestQuery->fetchColumn();
         self::assertSame(GraphProjectionDigest::forRelations($graph), $digest);
 
         self::assertTrue($store->advanceProvenanceIfUnchanged(
@@ -60,7 +62,9 @@ final class GuardedProvenanceTest extends TestCase
 
         self::assertSame('revision:b', $store->sourceRevision());
         self::assertSame('fingerprint:b', $store->sourceFingerprint());
-        self::assertSame($digest, $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'")->fetchColumn());
+        $digestQuery = $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'");
+        self::assertInstanceOf(\PDOStatement::class, $digestQuery);
+        self::assertSame($digest, $digestQuery->fetchColumn());
         self::assertSame($before, array_map(static fn (GraphRelation $relation): array => $relation->toArray(), iterator_to_array($store->relations(), false)));
         self::assertSame([], $store->integrityFailures());
     }
