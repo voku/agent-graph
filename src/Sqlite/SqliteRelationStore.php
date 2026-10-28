@@ -10,6 +10,7 @@ use RuntimeException;
 use Throwable;
 use voku\AgentGraph\Graph\GraphProjection;
 use voku\AgentGraph\Graph\GraphProjectionValidator;
+use voku\AgentGraph\Graph\GraphProjectionDigest;
 use voku\AgentGraph\Graph\GraphRelation;
 use voku\AgentGraph\Graph\GraphValidationException;
 use voku\AgentGraph\Graph\GraphValidationIssue;
@@ -140,8 +141,10 @@ final class SqliteRelationStore
             );
 
             $relationCount = 0;
+            $projectionDigest = GraphProjectionDigest::start();
             foreach ($relations as $relation) {
                 $this->assertValidRelation($relation);
+                GraphProjectionDigest::append($projectionDigest, $relation);
 
                 $relationInsert->execute([
                     'relation_id' => $relation->id,
@@ -174,6 +177,7 @@ final class SqliteRelationStore
 
             $this->setMeta('projection_version', $projectionVersion);
             $this->setMeta('relation_count', (string) $relationCount);
+            $this->setMeta('projection_digest_v1', GraphProjectionDigest::finish($projectionDigest));
             if ($sourceRevision === null) {
                 $this->deleteMeta('source_revision');
                 $this->deleteMeta('source_fingerprint');
@@ -182,6 +186,66 @@ final class SqliteRelationStore
                 $this->setMeta('source_fingerprint', (string) $sourceFingerprint);
             }
             $this->pdo->commit();
+        } catch (Throwable $exception) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Advances provenance without rewriting rows, but ONLY when the caller provides
+     * the entire ordered graph and the stored revision, fingerprint and projection
+     * digest all match. Old stores lacking a digest return false, not success.
+     *
+     * BEGIN IMMEDIATE prevents a different SQLite writer from changing provenance
+     * or relation rows between these checks and the metadata update.
+     *
+     * @param iterable<GraphRelation> $relations
+     */
+    public function advanceProvenanceIfUnchanged(
+        iterable $relations,
+        string $expectedRevision,
+        string $expectedFingerprint,
+        string $newRevision,
+        string $newFingerprint,
+    ): bool {
+        if ($this->readOnly) {
+            throw new RuntimeException('Cannot update provenance on a read-only graph store.');
+        }
+
+        foreach ([$expectedRevision, $expectedFingerprint, $newRevision, $newFingerprint] as $value) {
+            if (trim($value) === '') {
+                throw new InvalidArgumentException('Graph provenance must be non-empty.');
+            }
+        }
+
+        // Compute from the actual candidate relations, not a trusted caller-supplied
+        // string. A caller must not be able to silently claim that a changed graph
+        // has the old digest.
+        $digest = GraphProjectionDigest::forRelations($relations);
+        $this->assertSchemaCompatible();
+        $this->pdo->exec('BEGIN IMMEDIATE');
+
+        try {
+            $matches = $this->meta('projection_version') === GraphProjection::VERSION
+                && $this->meta('source_revision') === $expectedRevision
+                && $this->meta('source_fingerprint') === $expectedFingerprint
+                && $this->meta('projection_digest_v1') === $digest;
+
+            if (!$matches) {
+                $this->pdo->rollBack();
+
+                return false;
+            }
+
+            $this->setMeta('source_revision', $newRevision);
+            $this->setMeta('source_fingerprint', $newFingerprint);
+            $this->pdo->commit();
+
+            return true;
         } catch (Throwable $exception) {
             if ($this->pdo->inTransaction()) {
                 $this->pdo->rollBack();
