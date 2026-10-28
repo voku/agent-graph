@@ -30,7 +30,12 @@ if (!mkdir($directory, 0o775, true) && !is_dir($directory)) {
 $generate = static function (int $count, bool $mutate = false): Generator {
     for ($i = 0; $i < $count; ++$i) {
         // The negative fixture changes one ordered target, not just a count.
-        $targets = ['dst' . ($i % 177), 'dst' . (($i * 7 + 3) % 177)];
+        $first = $i % 177;
+        $second = ($i * 7 + 3) % 177;
+        if ($second === $first) {
+            $second = ($first + 1) % 177;
+        }
+        $targets = ['dst' . $first, 'dst' . $second];
         if ($mutate && $i === intdiv($count, 2)) {
             $targets[1] = 'mutated-target';
         }
