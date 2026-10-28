@@ -236,19 +236,24 @@ final class SqliteRelationStore
                 && $this->meta('projection_digest_v1') === $digest;
 
             if (!$matches) {
-                $this->pdo->rollBack();
+                // PDO::rollBack() does not track BEGIN IMMEDIATE issued via exec().
+                $this->pdo->exec('ROLLBACK');
 
                 return false;
             }
 
             $this->setMeta('source_revision', $newRevision);
             $this->setMeta('source_fingerprint', $newFingerprint);
-            $this->pdo->commit();
+            $this->pdo->exec('COMMIT');
 
             return true;
         } catch (Throwable $exception) {
-            if ($this->pdo->inTransaction()) {
-                $this->pdo->rollBack();
+            // SQLite may roll the transaction back automatically on a fatal
+            // storage error. Preserve the original exception in either case.
+            try {
+                $this->pdo->exec('ROLLBACK');
+            } catch (Throwable) {
+                // Already rolled back by SQLite.
             }
 
             throw $exception;
