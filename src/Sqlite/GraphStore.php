@@ -50,6 +50,29 @@ final class GraphStore
         );
     }
 
+    /**
+     * Reuse indexed relation rows only if the complete ordered candidate graph
+     * and the previous source identity match within one SQLite transaction.
+     * Returns false when a full replacement is required (including old stores).
+     *
+     * @param iterable<GraphRelation> $relations
+     */
+    public function advanceProvenanceIfUnchanged(
+        iterable $relations,
+        string $expectedRevision,
+        string $expectedFingerprint,
+        string $newRevision,
+        string $newFingerprint,
+    ): bool {
+        return $this->relations->advanceProvenanceIfUnchanged(
+            $relations,
+            $expectedRevision,
+            $expectedFingerprint,
+            $newRevision,
+            $newFingerprint,
+        );
+    }
+
     /** @return list<GraphRelation> */
     public function incoming(string $targetId, ?string $kind = null): array
     {
