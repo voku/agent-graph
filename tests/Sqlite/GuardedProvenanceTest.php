@@ -50,6 +50,7 @@ final class GuardedProvenanceTest extends TestCase
         $digestQuery = $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'");
         self::assertInstanceOf(\PDOStatement::class, $digestQuery);
         $digest = $digestQuery->fetchColumn();
+        $digestQuery->closeCursor();
         self::assertSame(GraphProjectionDigest::forRelations($graph), $digest);
 
         self::assertTrue($store->advanceProvenanceIfUnchanged(
@@ -65,6 +66,7 @@ final class GuardedProvenanceTest extends TestCase
         $digestQuery = $db->query("SELECT value FROM graph_meta WHERE key = 'projection_digest_v1'");
         self::assertInstanceOf(\PDOStatement::class, $digestQuery);
         self::assertSame($digest, $digestQuery->fetchColumn());
+        $digestQuery->closeCursor();
         self::assertSame($before, array_map(static fn (GraphRelation $relation): array => $relation->toArray(), iterator_to_array($store->relations(), false)));
         self::assertSame([], $store->integrityFailures());
     }
