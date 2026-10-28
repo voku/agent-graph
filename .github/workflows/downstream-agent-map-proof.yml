@@ -45,7 +45,8 @@ jobs:
         run: |
           set -euo pipefail
           composer config repositories.guard-graph '{"type":"path","url":"../agent-graph","options":{"symlink":true,"versions":{"voku/agent-graph":"0.3.1"}}}'
-          composer update voku/agent-graph --with-all-dependencies --no-interaction --prefer-dist
+          # agent-map intentionally has no tracked lock file; partial updates are invalid.
+          composer update --no-interaction --prefer-dist
           php -r '
             require "vendor/autoload.php";
             $path = (new ReflectionClass(\voku\AgentGraph\Sqlite\GraphStore::class))->getFileName();
