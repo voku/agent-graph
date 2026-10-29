@@ -26,6 +26,11 @@ final class GraphProjectionDigest
 
     public static function append(HashContext $context, GraphRelation $relation): void
     {
+        // Hash exactly the list order persisted by SQLite, not insertion order from sparse keys.
+        if (!array_is_list($relation->targetIds)) {
+            throw new \\InvalidArgumentException('Graph relation target IDs must be a list.');
+        }
+
         $bytes = json_encode($relation->toArray(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         hash_update($context, pack('N', strlen($bytes)));
         hash_update($context, $bytes);
