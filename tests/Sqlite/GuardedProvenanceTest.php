@@ -122,6 +122,34 @@ final class GuardedProvenanceTest extends TestCase
         self::assertTrue($store->advanceProvenanceIfUnchanged($graph, 'r:b', 'f:b', 'r:c', 'f:c'));
     }
 
+    public function testNonListTargetIdsAreRejectedBeforeReplacementAndGuardedReuse(): void
+    {
+        $store = new GraphStore($this->databaseFile);
+        $valid = $this->graph();
+        $store->replace($valid, 'r:old', 'f:old');
+
+        // Deliberately violate the list<T> PHPDoc at runtime; array insertion order differs
+        // from the numeric target positions that SQLite would read back.
+        /** @var list<string> $nonList */
+        $nonList = [1 => 'first', 0 => 'second'];
+        $invalid = [new GraphRelation('bad', 'source', 'calls', $nonList)];
+
+        foreach ([
+            static fn (): void => $store->replace($invalid, 'r:new', 'f:new'),
+            static fn (): bool => $store->advanceProvenanceIfUnchanged($invalid, 'r:old', 'f:old', 'r:new', 'f:new'),
+        ] as $operation) {
+            try {
+                $operation();
+                self::fail('Sparse target IDs must never be hashed or persisted.');
+            } catch (\\InvalidArgumentException $exception) {
+                self::assertStringContainsString('must be a list', $exception->getMessage());
+            }
+            self::assertSame('r:old', $store->sourceRevision());
+            self::assertSame('f:old', $store->sourceFingerprint());
+            self::assertSame([], $store->integrityFailures());
+        }
+    }
+
     public function testEmptyOrInvalidProvenanceIsRejected(): void
     {
         $store = new GraphStore($this->databaseFile);
