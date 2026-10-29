@@ -128,11 +128,11 @@ final class GuardedProvenanceTest extends TestCase
         $valid = $this->graph();
         $store->replace($valid, 'r:old', 'f:old');
 
-        // Deliberately violate the list<T> PHPDoc at runtime; array insertion order differs
-        // from the numeric target positions that SQLite would read back.
-        /** @var list<string> $nonList */
-        $nonList = [1 => 'first', 0 => 'second'];
-        $invalid = [new GraphRelation('bad', 'source', 'calls', $nonList)];
+        // Deliberately violate list<T> to verify runtime validation, not static typing.
+        $invalid = [
+            // @phpstan-ignore argument.type (Negative runtime test: deliberately sparse keys.)
+            new GraphRelation('bad', 'source', 'calls', [1 => 'first', 0 => 'second']),
+        ];
 
         foreach ([
             static function () use ($store, $invalid): void {
