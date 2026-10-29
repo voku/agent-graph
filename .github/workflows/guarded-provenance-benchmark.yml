@@ -1,0 +1,48 @@
+name: Guarded graph provenance benchmark
+
+on:
+  push:
+    branches:
+      - feature/guarded-provenance-reuse-*
+    paths:
+      - .github/workflows/guarded-provenance-benchmark.yml
+      - scripts/guarded-provenance-benchmark.php
+      - src/Graph/GraphProjectionDigest.php
+      - src/Sqlite/GraphStore.php
+      - src/Sqlite/SqliteRelationStore.php
+  pull_request:
+    paths:
+      - .github/workflows/guarded-provenance-benchmark.yml
+      - scripts/guarded-provenance-benchmark.php
+      - src/Graph/GraphProjectionDigest.php
+      - src/Sqlite/GraphStore.php
+      - src/Sqlite/SqliteRelationStore.php
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist
+      - run: php -l scripts/guarded-provenance-benchmark.php
+      - name: Compare actual guarded operation with full replacement
+        run: php scripts/guarded-provenance-benchmark.php
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: guarded-graph-php-${{ matrix.php }}
+          path: ${{ runner.temp }}/agent-graph-guarded-*/result.json
+          if-no-files-found: warn
