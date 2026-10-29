@@ -135,13 +135,17 @@ final class GuardedProvenanceTest extends TestCase
         $invalid = [new GraphRelation('bad', 'source', 'calls', $nonList)];
 
         foreach ([
-            static fn (): void => $store->replace($invalid, 'r:new', 'f:new'),
-            static fn (): bool => $store->advanceProvenanceIfUnchanged($invalid, 'r:old', 'f:old', 'r:new', 'f:new'),
+            static function () use ($store, $invalid): void {
+                $store->replace($invalid, 'r:new', 'f:new');
+            },
+            static function () use ($store, $invalid): void {
+                $store->advanceProvenanceIfUnchanged($invalid, 'r:old', 'f:old', 'r:new', 'f:new');
+            },
         ] as $operation) {
             try {
                 $operation();
                 self::fail('Sparse target IDs must never be hashed or persisted.');
-            } catch (\\InvalidArgumentException $exception) {
+            } catch (\InvalidArgumentException $exception) {
                 self::assertStringContainsString('must be a list', $exception->getMessage());
             }
             self::assertSame('r:old', $store->sourceRevision());
