@@ -28,7 +28,7 @@ final class GraphProjectionDigest
     {
         // Hash exactly the list order persisted by SQLite, not insertion order from sparse keys.
         if (!array_is_list($relation->targetIds)) {
-            throw new \\InvalidArgumentException('Graph relation target IDs must be a list.');
+            throw new \InvalidArgumentException('Graph relation target IDs must be a list.');
         }
 
         $bytes = json_encode($relation->toArray(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
