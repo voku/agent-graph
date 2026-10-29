@@ -1,0 +1,38 @@
+name: One-time verified agent-graph 0.3.2 tag
+
+on:
+  push:
+    branches:
+      - release/agent-graph-0.3.2
+    paths:
+      - .release-agent-graph-0.3.2
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Publish only the exact reviewed and merged owner commit
+        shell: bash
+        env:
+          EXPECTED_MAIN: 3c26e8ffabdbd39ad63560bb9cd4754f38e7e802
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          actual="$(git rev-parse refs/remotes/origin/main)"
+          test "$actual" = "$EXPECTED_MAIN"
+          test "$(cat .release-agent-graph-0.3.2)" = "$EXPECTED_MAIN"
+          if [[ -n "$(git ls-remote --tags origin refs/tags/0.3.2)" ]]; then
+            echo "Version 0.3.2 already tagged. Refusing to repoint." >&2
+            exit 1
+          fi
+          git tag 0.3.2 "$EXPECTED_MAIN"
+          git push origin refs/tags/0.3.2
+          echo "Published immutable tag 0.3.2 at $EXPECTED_MAIN" >> "$GITHUB_STEP_SUMMARY"
