@@ -40,7 +40,7 @@ jobs:
       - run: php -l scripts/guarded-provenance-benchmark.php
       - name: Compare actual guarded operation with full replacement
         run: php scripts/guarded-provenance-benchmark.php
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: guarded-graph-php-${{ matrix.php }}
