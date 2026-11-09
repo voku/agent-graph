@@ -4,6 +4,20 @@ Small, deterministic SQLite graph index/query infrastructure for the `voku/agent
 
 The package owns reusable graph storage/query mechanics and shared SQLite runtime assets. Domain semantics stay with their producers: `agent-map` owns repository/code relations, `agent-learning` owns learning lineage, and consumers use those owners rather than reading another package's graph database directly.
 
+## Where to work in this repository
+
+This package is intentionally a domain-neutral graph mechanic. The relevant files depend on whether you are changing the relation contract or its SQLite implementation:
+
+| Concern | Source of truth |
+| --- | --- |
+| Relation model and graph queries | [`src/Graph/`](src/Graph/) |
+| SQLite persistence and runtime integration | [`src/Sqlite/`](src/Sqlite/) |
+| Bundled SQLite vector assets | [`resources/`](resources/) and [third-party notices](docs/reference/third-party-notices.md) |
+| Asset/build maintenance | [`scripts/`](scripts/) and [`composer.json`](composer.json) |
+| Contracts and regressions | [`tests/`](tests/) |
+
+Consumers must use their semantic owner (`agent-map` or `agent-learning`) for domain meaning; this store does not decide what a graph edge proves.
+
 ## GraphStore
 
 `GraphStore` is the primary consumer boundary. Owners project only structural identity into ordered `GraphRelation` values:
