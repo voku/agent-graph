@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Fix PHP 8.5 deprecations when opening a graph read-only: use `Pdo\Sqlite::ATTR_OPEN_FLAGS` / `Pdo\Sqlite::OPEN_READONLY` where the driver subclass exists (PHP 8.4+) instead of the deprecated `PDO::SQLITE_ATTR_OPEN_FLAGS` / `PDO::SQLITE_OPEN_READONLY`; PHP 8.2/8.3 keep the PDO constants. The test suite now fails on deprecations so a regression is visible in CI.
+
 ## 0.3.1
 
 - Fix: a rejected read-only open (for example of a version 1 file) no longer keeps its SQLite connection and read lock alive through the thrown exception, which made the owner's subsequent writable upgrade fail with `database is locked`. The schema probe releases its statement before throwing.
