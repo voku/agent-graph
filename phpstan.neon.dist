@@ -3,3 +3,5 @@ parameters:
     paths:
         - src
         - tests
+    scanFiles:
+        - phpstan-stubs/PdoSqlite.stub

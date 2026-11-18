@@ -3,7 +3,9 @@
          xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/11.5/phpunit.xsd"
          bootstrap="vendor/autoload.php"
          cacheDirectory=".phpunit.cache"
-         colors="true">
+         colors="true"
+         failOnDeprecation="true"
+         displayDetailsOnTestsThatTriggerDeprecations="true">
     <testsuites>
         <testsuite name="agent-graph">
             <directory>tests</directory>

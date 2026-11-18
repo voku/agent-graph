@@ -64,6 +64,14 @@ final class SqliteRelationStore
             return new PDO($dsn, null, null, $options);
         }
 
+        // PHP 8.4 moved the driver constants to Pdo\Sqlite and PHP 8.5 deprecates the PDO::SQLITE_*
+        // aliases. Prefer the driver subclass where it exists; older runtimes keep the PDO constants.
+        if (class_exists('Pdo\\Sqlite')) {
+            $options[\Pdo\Sqlite::ATTR_OPEN_FLAGS] = \Pdo\Sqlite::OPEN_READONLY;
+
+            return new PDO($dsn, null, null, $options);
+        }
+
         if (!defined('PDO::SQLITE_ATTR_OPEN_FLAGS') || !defined('PDO::SQLITE_OPEN_READONLY')) {
             throw new RuntimeException('PDO SQLite read-only open flags are unavailable.');
         }
