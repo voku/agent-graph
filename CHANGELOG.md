@@ -1,8 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.3.3
 
 - Fix PHP 8.5 deprecations when opening a graph read-only: use `Pdo\Sqlite::ATTR_OPEN_FLAGS` / `Pdo\Sqlite::OPEN_READONLY` where the driver subclass exists (PHP 8.4+) instead of the deprecated `PDO::SQLITE_ATTR_OPEN_FLAGS` / `PDO::SQLITE_OPEN_READONLY`; PHP 8.2/8.3 keep the PDO constants. The test suite now fails on deprecations so a regression is visible in CI.
+
+## 0.3.2
+
+- Add `GraphStore::advanceProvenanceIfUnchanged()`: when a rebuild produces exactly the same ordered relation projection, advance the stored revision and fingerprint in one guarded `BEGIN IMMEDIATE` transaction instead of replacing every relation (#45). The replacement transaction now persists a versioned, order-sensitive projection digest (v1); a store without that digest, a stale revision or fingerprint, or any changed, removed or reordered relation falls back to a full replace. A relation whose target IDs are not a list is rejected without mutating provenance.
+- This section was added with 0.3.3; the 0.3.2 tag itself was published without a changelog entry.
 
 ## 0.3.1
 
