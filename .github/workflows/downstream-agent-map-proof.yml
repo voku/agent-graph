@@ -44,7 +44,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          composer config repositories.guard-graph '{"type":"path","url":"../agent-graph","options":{"symlink":true,"versions":{"voku/agent-graph":"0.3.1"}}}'
+          # The candidate checkout has no tag, so give it a version above every 0.3.x release:
+          # agent-map's constraint (currently ^0.3.2) must accept it, or the path repository,
+          # which has priority, makes the requirement unsatisfiable before any test runs.
+          composer config repositories.guard-graph '{"type":"path","url":"../agent-graph","options":{"symlink":true,"versions":{"voku/agent-graph":"0.3.99"}}}'
           # agent-map intentionally has no tracked lock file; partial updates are invalid.
           composer update --no-interaction --prefer-dist
           php -r '
